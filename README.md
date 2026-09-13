@@ -1,7 +1,7 @@
 # Smart-X — IoT Mesh Ecosystem 
 
-**Student Number:** ST10448618
-**Module:** PROG7312 — Programming 3B
+**Student Number:** ST10448618  
+**Module:** PROG7312 — Programming 3B  
 **YouTube Demo:** https://youtu.be/VZPxDienen0
 
 ## Overview
