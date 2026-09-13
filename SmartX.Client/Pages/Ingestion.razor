@@ -166,14 +166,7 @@
             {
                 <p class="empty-state" style="margin-top: 0.5rem; font-size: 0.8rem;">No files attached yet.</p>
             }
-
-            <p class="stat-label" style="margin: 1rem 0 0.5rem;">Simulate telemetry</p>
-            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-                <button class="btn-secondary btn-sm" @onclick="() => SimulateReading(_managingSensor.MacAddress)">Normal</button>
-                <button class="btn-secondary btn-sm" @onclick="() => SimulateSpike(_managingSensor.MacAddress)">Spike</button>
-                <button class="btn-secondary btn-sm" @onclick="() => SimulateDrop(_managingSensor.MacAddress)">Drop</button>
-                <button class="btn-secondary btn-sm" @onclick="() => SimulateDisconnect(_managingSensor.MacAddress)">Disconnect</button>
-            </div>
+          
             @if (_rowResults.TryGetValue(_managingSensor.MacAddress, out var row))
             {
                 @if (row.Ok)
