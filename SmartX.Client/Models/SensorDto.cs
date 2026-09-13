@@ -7,6 +7,7 @@ public class SensorDto
     public string Location { get; set; } = "";
     public string Category { get; set; } = "";
     public string Status { get; set; } = "Online";
+    public List<SensorFileDto> Files { get; set; } = new();
 }
 
 public class AnomalyCellDto
@@ -58,3 +59,9 @@ public class TelemetryLogDto {
     public string Unit { get; set; } = ""; 
     public DateTime Timestamp { get; set; } 
     }
+
+public class SensorFileDto
+{
+    public int Id { get; set; }
+    public string FileName { get; set; } = "";
+}

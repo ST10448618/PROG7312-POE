@@ -140,6 +140,22 @@
 
             <p class="stat-label" style="margin-bottom: 0.5rem;">Attach file</p>
             <InputFile OnChange="e => UploadFile(e, _managingSensor.MacAddress)" />
+            @if (_managingSensor.Files.Count > 0)
+            {
+                <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                    @foreach (var file in _managingSensor.Files)
+                    {
+                        <a href="@($"{Config.BaseUrl}/api/sensors/{_managingSensor.MacAddress}/files/{file.Id}/download")"
+                        target="_blank" class="mono" style="font-size: 0.8rem; color: var(--text-dim);">
+                            📄 @file.FileName
+                        </a>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="empty-state" style="margin-top: 0.5rem; font-size: 0.8rem;">No files attached yet.</p>
+            }
 
             <p class="stat-label" style="margin: 1rem 0 0.5rem;">Simulate telemetry</p>
             <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
@@ -284,6 +300,8 @@
         using var content = new MultipartFormDataContent();
         content.Add(new StreamContent(file.OpenReadStream(10 * 1024 * 1024)), "file", file.Name);
         await Api.UploadFileAsync(mac, content);
+        await RefreshAll();
+        _managingSensor = _sensors.FirstOrDefault(s => s.MacAddress == mac);
     }
 
     private async Task SimulateReading(string mac)
