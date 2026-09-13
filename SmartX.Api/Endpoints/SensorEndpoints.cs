@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using SmartX.Api.Domain.Entities;
 using SmartX.Api.Dtos;
 using SmartX.Api.Hubs;
 using SmartX.Api.Infrastructure.Data;
@@ -26,16 +27,6 @@ public static class SensorEndpoints
         group.MapPost("/{mac}/status", async (string mac, SensorStatusRequest req, SensorService sensors) =>
             Results.Ok(await sensors.UpdateStatusAsync(mac, req.Status)));
 
-        group.MapPost("/{mac}/upload", async (string mac, IFormFile file, IFileStorageService storage) =>
-        {
-            if (file is null || file.Length == 0)
-                throw new ArgumentException("Empty file.");
-
-            await using var stream = file.OpenReadStream();
-            var savedPath = await storage.SaveEncryptedAsync(mac, file.FileName, stream);
-            return Results.Ok(new { savedTo = savedPath, encrypted = true });
-        }).DisableAntiforgery();
-
         group.MapGet("/summary", async (SensorService sensors) => Results.Ok(await sensors.GetSummaryAsync()));
 
         group.MapPut("/{mac}", async (string mac, UpdateSensorRequest req, SensorService sensors) =>
@@ -47,15 +38,26 @@ public static class SensorEndpoints
             return Results.NoContent();
         });
 
-        group.MapGet("/{mac}/files/{fileId}/download", async (string mac, int fileId, AppDbContext db, IFileStorageService storage) =>
+        group.MapPost("/{mac}/upload", async (string mac, IFormFile file, AppDbContext db, IFileStorageService storage) =>
         {
-            var file = await db.SensorFiles
-                .Include(f => f.SensorProfile)
-                .FirstOrDefaultAsync(f => f.Id == fileId && f.SensorProfile!.MacAddress == mac)
-                ?? throw new KeyNotFoundException("File not found.");
+            if (file is null || file.Length == 0)
+                throw new ArgumentException("Empty file.");
 
-            var stream = storage.OpenDecryptedStream(file.StoredPath);
-            return Results.File(stream, "application/octet-stream", file.FileName);
-        });
+            var sensor = await db.Sensors.FirstOrDefaultAsync(s => s.MacAddress == mac)
+                ?? throw new KeyNotFoundException($"Sensor '{mac}' not found.");
+
+            await using var stream = file.OpenReadStream();
+            var savedPath = await storage.SaveEncryptedAsync(mac, file.FileName, stream);
+
+            db.SensorFiles.Add(new SensorFile
+            {
+                FileName = file.FileName,
+                StoredPath = savedPath,
+                SensorProfileId = sensor.Id
+            });
+            await db.SaveChangesAsync();
+
+            return Results.Ok(new { savedTo = savedPath, encrypted = true });
+        }).DisableAntiforgery();
     }
 }

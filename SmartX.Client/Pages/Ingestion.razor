@@ -139,7 +139,17 @@
             <hr style="border: none; border-top: 1px solid var(--line); margin: 1rem 0;" />
 
             <p class="stat-label" style="margin-bottom: 0.5rem;">Attach file</p>
-            <InputFile OnChange="e => UploadFile(e, _managingSensor.MacAddress)" />
+            <InputFile OnChange="e => UploadFile(e, _managingSensor.MacAddress)" disabled="@_uploading" />
+
+            @if (_uploading)
+            {
+                <p class="status-message" style="color: var(--text-dim);">Uploading and encrypting…</p>
+            }
+            @if (_uploadMessage is not null)
+            {
+                <p class="status-message @(_uploadOk ? "ok" : "error")">@_uploadMessage</p>
+            }
+
             @if (_managingSensor.Files.Count > 0)
             {
                 <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem;">
@@ -245,6 +255,9 @@
     private double _wattsA = 120;
     private double _wattsB = 80;
     private string? _aggregateResult;
+    private bool _uploading;
+    private string? _uploadMessage;
+    private bool _uploadOk;
     private readonly Dictionary<string, (bool Ok, AnomalyCellDto? Cell, string? Error)> _rowResults = new();
 
     protected override async Task OnInitializedAsync()
@@ -296,10 +309,32 @@
 
     private async Task UploadFile(InputFileChangeEventArgs e, string mac)
     {
-        var file = e.File;
-        using var content = new MultipartFormDataContent();
-        content.Add(new StreamContent(file.OpenReadStream(10 * 1024 * 1024)), "file", file.Name);
-        await Api.UploadFileAsync(mac, content);
+        _uploading = true;
+        _uploadMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var file = e.File;
+            using var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(file.OpenReadStream(10 * 1024 * 1024)), "file", file.Name);
+            var response = await Api.UploadFileAsync(mac, content);
+
+            _uploadOk = response.IsSuccessStatusCode;
+            _uploadMessage = _uploadOk
+                ? $"'{file.Name}' uploaded and encrypted successfully."
+                : $"Upload failed: {await response.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex)
+        {
+            _uploadOk = false;
+            _uploadMessage = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            _uploading = false;
+        }
+
         await RefreshAll();
         _managingSensor = _sensors.FirstOrDefault(s => s.MacAddress == mac);
     }
