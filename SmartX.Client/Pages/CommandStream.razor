@@ -21,6 +21,14 @@
     <div class="alert-banner">@_loadError</div>
 }
 
+<div class="command-grid">
+    <section class="card">
+        <h3 style="margin-bottom: 0.75rem;">Command Queue</h3>
+        <p class="empty-state">No commands queued yet.</p>
+    </section>
+
+</div>
+
 @code {
     private HubConnection? _hub;
     private string _connectionState = "Connecting…";
