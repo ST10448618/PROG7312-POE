@@ -65,3 +65,6 @@ public class SensorFileDto
     public int Id { get; set; }
     public string FileName { get; set; } = "";
 }
+
+
+

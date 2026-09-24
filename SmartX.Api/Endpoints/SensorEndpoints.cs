@@ -59,5 +59,16 @@ public static class SensorEndpoints
 
             return Results.Ok(new { savedTo = savedPath, encrypted = true });
         }).DisableAntiforgery();
+
+        group.MapGet("/{mac}/files/{fileId}/download", async (string mac, int fileId, AppDbContext db, IFileStorageService storage) =>
+        {
+            var file = await db.SensorFiles
+                .Include(f => f.SensorProfile)
+                .FirstOrDefaultAsync(f => f.Id == fileId && f.SensorProfile!.MacAddress == mac)
+                ?? throw new KeyNotFoundException("File not found.");
+
+            var stream = storage.OpenDecryptedStream(file.StoredPath);
+            return Results.File(stream, "application/octet-stream", file.FileName);
+        });
     }
 }
