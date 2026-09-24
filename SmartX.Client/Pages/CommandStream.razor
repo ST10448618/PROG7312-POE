@@ -42,13 +42,37 @@
         <h3 style="margin-bottom: 0.75rem;">Suggested Actions</h3>
         <p class="empty-state">Not enough activity yet to generate suggestions.</p>
     </section>
-
 </div>
+
+<section class="card" style="margin-top: 1.5rem;">
+    <h3 style="margin-bottom: 1rem;">Live Device Registry</h3>
+    @if (_sensors.Count == 0)
+    {
+        <p class="empty-state">No devices registered yet.</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead><tr><th>MAC</th><th>Category</th><th>Status</th></tr></thead>
+            <tbody>
+                @foreach (var s in _sensors)
+                {
+                    <tr>
+                        <td class="mono">@s.MacAddress</td>
+                        <td>@s.Category</td>
+                        <td><span class="badge badge-emerald">@s.Status</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
 
 @code {
     private HubConnection? _hub;
     private string _connectionState = "Connecting…";
     private string? _loadError;
+    private List<SensorDto> _sensors = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -62,7 +86,8 @@
             _hub.Reconnecting += _ => { _connectionState = "Reconnecting…"; return InvokeAsync(StateHasChanged); };
             _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
             _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
-
+            _sensors = await Api.GetSensorsAsync() ?? new();
+            
             await _hub.StartAsync();
             _connectionState = "Connected";
         }
