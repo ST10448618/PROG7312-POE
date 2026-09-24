@@ -1,0 +1,72 @@
+@page "/command-stream"
+@using Microsoft.AspNetCore.SignalR.Client
+@using SmartX.Client.Models
+@using SmartX.Client.Services
+@implements IAsyncDisposable
+@inject SensorApiClient Api
+@inject ApiConfig Config
+
+<div class="page-header">
+    <div class="title-with-dot">
+        <h1>Real-Time Command Stream &amp; History</h1>
+        <span class="pulse-dot @ConnectionDotClass"><span class="ping pulse-slow"></span><span class="core"></span></span>
+    </div>
+    <p class="page-subtitle">
+        Live command queue · priority alerts · undo history · <span class="@ConnectionTextClass">@_connectionState</span>
+    </p>
+</div>
+
+@if (_loadError is not null)
+{
+    <div class="alert-banner">@_loadError</div>
+}
+
+@code {
+    private HubConnection? _hub;
+    private string _connectionState = "Connecting…";
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _hub = new HubConnectionBuilder()
+                .WithUrl($"{Config.BaseUrl}/hubs/telemetry")
+                .WithAutomaticReconnect()
+                .Build();
+
+            _hub.Reconnecting += _ => { _connectionState = "Reconnecting…"; return InvokeAsync(StateHasChanged); };
+            _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
+            _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
+
+            await _hub.StartAsync();
+            _connectionState = "Connected";
+        }
+        catch (Exception ex)
+        {
+            _connectionState = "Disconnected";
+            _loadError = "Couldn't reach the live telemetry hub.";
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+    private string ConnectionDotClass => _connectionState switch
+    {
+        "Connected" => "",
+        "Reconnecting…" => "amber",
+        _ => "rose"
+    };
+
+    private string ConnectionTextClass => _connectionState switch
+    {
+        "Connected" => "",
+        "Reconnecting…" => "",
+        _ => ""
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try { if (_hub is not null) await _hub.DisposeAsync(); }
+        catch { /* connection may never have fully established; safe to ignore on teardown */ }
+    }
+}
