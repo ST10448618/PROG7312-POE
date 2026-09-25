@@ -39,6 +39,8 @@ public class SensorService
             ?? throw new KeyNotFoundException($"Sensor '{mac}' not found.");
         sensor.Status = status;
         await _db.SaveChangesAsync();
+
+        _registry.UpdateReading(mac, _registry.Get(mac)?.LastValue ?? 0, status);
         return sensor;
     }
 
