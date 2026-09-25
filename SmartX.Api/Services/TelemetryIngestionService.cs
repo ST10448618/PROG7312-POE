@@ -14,16 +14,18 @@ public class TelemetryIngestionService
     private readonly TelemetryBatchStore _batches;
     private readonly IHubContext<TelemetryHub> _hub;
     private readonly IntegrationDispatchService _dispatch;
+    private readonly LiveDeviceRegistry _registry;
 
     public TelemetryIngestionService(
         AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
-        IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch)
+        IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry)
     {
         _db = db;
         _anomaly = anomaly;
         _batches = batches;
         _hub = hub;
         _dispatch = dispatch;
+        _registry = registry;
     }
 
     public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where T : struct
@@ -53,8 +55,11 @@ public class TelemetryIngestionService
 
         await _db.SaveChangesAsync();
 
+        _registry.UpdateReading(packet.SensorId, packet.NumericValue, severity == "Disconnected" ? "Disconnected" : "Online");
+
         await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
         await _hub.Clients.All.SendAsync("TelemetryIngested", new { packet.SensorId, packet.Timestamp, Value = packet.NumericValue });
+        await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
 
         if (severity == "Critical")
             await _dispatch.NotifyAllAsync(packet.SensorId, result.Value, result.Score);
@@ -78,7 +83,10 @@ public class TelemetryIngestionService
         });
         await _db.SaveChangesAsync();
 
+        _registry.UpdateReading(sensorId, 0, "Disconnected");
+
         await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
+        await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
         return result;
     }
 }
