@@ -22,6 +22,8 @@ public static class SensorEndpoints
             return Results.Created($"/api/sensors/{sensor.Id}", sensor);
         });
 
+        group.MapGet("/registry", (LiveDeviceRegistry registry) => Results.Ok(registry.GetAll()));
+
         group.MapGet("/", async (SensorService sensors) => Results.Ok(await sensors.GetAllAsync()));
 
         group.MapPost("/{mac}/status", async (string mac, SensorStatusRequest req, SensorService sensors) =>
