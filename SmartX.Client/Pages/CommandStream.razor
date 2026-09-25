@@ -45,22 +45,27 @@
 </div>
 
 <section class="card" style="margin-top: 1.5rem;">
-    <h3 style="margin-bottom: 1rem;">Live Device Registry</h3>
-    @if (_sensors.Count == 0)
+    <div class="card-header">
+        <h3>Live Device Registry</h3>
+        <span style="font-size: 0.8rem; color: var(--text-dim);">@_devices.Count device(s) tracked</span>
+    </div>
+    @if (_devices.Count == 0)
     {
         <p class="empty-state">No devices registered yet.</p>
     }
     else
     {
         <table class="data-table">
-            <thead><tr><th>MAC</th><th>Category</th><th>Status</th></tr></thead>
+            <thead><tr><th>MAC</th><th>Category</th><th>Last Value</th><th>Status</th><th>Last Seen</th></tr></thead>
             <tbody>
-                @foreach (var s in _sensors)
+                @foreach (var d in _devices.OrderBy(d => d.MacAddress))
                 {
                     <tr>
-                        <td class="mono">@s.MacAddress</td>
-                        <td style="color: var(--text);">@s.Category</td>
-                        <td><span class="badge badge-emerald">@s.Status</span></td>
+                        <td class="mono">@d.MacAddress</td>
+                        <td style="color: var(--text);">@d.Category</td>
+                        <td class="mono">@(d.LastValue?.ToString("0.0") ?? "—")</td>
+                        <td><span class="badge @StatusBadge(d.Status)">@d.Status</span></td>
+                        <td style="color: var(--text-faint); font-size: 0.8rem;">@d.LastSeen.ToLocalTime().ToString("HH:mm:ss")</td>
                     </tr>
                 }
             </tbody>
@@ -73,6 +78,7 @@
     private string _connectionState = "Connecting…";
     private string? _loadError;
     private List<SensorDto> _sensors = new();
+    private List<LiveDeviceStateDto> _devices = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -118,4 +124,12 @@
         try { if (_hub is not null) await _hub.DisposeAsync(); }
         catch { /* connection may never have fully established; safe to ignore on teardown */ }
     }
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Disconnected" => "badge-info",
+        "Critical" => "badge-rose",
+        "Warning" => "badge-amber",
+        _ => "badge-emerald"
+    };
 }
