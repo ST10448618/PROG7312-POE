@@ -66,5 +66,13 @@ public class SensorFileDto
     public string FileName { get; set; } = "";
 }
 
-
+public class LiveDeviceStateDto
+{
+    public string MacAddress { get; set; } = "";
+    public string Location { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Status { get; set; } = "Online";
+    public double? LastValue { get; set; }
+    public DateTime LastSeen { get; set; }
+}
 
