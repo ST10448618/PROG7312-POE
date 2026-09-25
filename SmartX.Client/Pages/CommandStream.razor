@@ -94,6 +94,19 @@
             _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
             _sensors = await Api.GetSensorsAsync() ?? new();
 
+            _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
+            {
+                try
+                {
+                    _devices = devices;
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"DeviceRegistryUpdated handler failed: {ex}");
+                }
+            });
+
             await _hub.StartAsync();
             _connectionState = "Connected";
         }
