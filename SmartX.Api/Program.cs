@@ -50,6 +50,7 @@ builder.Services.AddScoped<AnomalyLogService>();
 builder.Services.AddSingleton<ConnectionTracker>();
 builder.Services.AddScoped<SystemHealthService>();
 builder.Services.AddHostedService<AutoTelemetrySimulator>();
+builder.Services.AddSingleton<LiveDeviceRegistry>();
 
 var app = builder.Build();
 
@@ -57,6 +58,11 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    var registry = scope.ServiceProvider.GetRequiredService<LiveDeviceRegistry>();
+    var existingSensors = db.Sensors.ToList();
+    foreach (var sensor in existingSensors)
+    registry.Register(sensor.MacAddress, sensor.Location, sensor.Category);
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
