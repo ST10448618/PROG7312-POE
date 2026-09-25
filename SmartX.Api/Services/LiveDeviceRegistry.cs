@@ -21,15 +21,29 @@ public class LiveDeviceRegistry
 
     public void Remove(string mac) => _devices.TryRemove(mac, out _);
 
-    public void UpdateReading(string mac, double value, string status)
-    {
-        if (_devices.TryGetValue(mac, out var device))
+public void UpdateReading(string mac, double value, string status)
+{
+    _devices.AddOrUpdate(
+        mac,
+        // If the device isn't tracked yet, add it with what we know from this reading
+        addValueFactory: _ => new LiveDeviceState
         {
-            device.LastValue = value;
-            device.Status = status;
-            device.LastSeen = DateTime.UtcNow;
-        }
-    }
+            MacAddress = mac,
+            Location = "Unknown",
+            Category = "Unknown",
+            Status = status,
+            LastValue = value,
+            LastSeen = DateTime.UtcNow
+        },
+        // If it's already tracked, update it in place
+        updateValueFactory: (_, existing) =>
+        {
+            existing.LastValue = value;
+            existing.Status = status;
+            existing.LastSeen = DateTime.UtcNow;
+            return existing;
+        });
+}
 
     public LiveDeviceState? Get(string mac) =>
         _devices.TryGetValue(mac, out var device) ? device : null;
