@@ -71,4 +71,7 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
 
     public Task<HttpResponseMessage> DeleteSensorAsync(string mac) =>
         _http.DeleteAsync($"api/sensors/{mac}");
+
+    public Task<List<LiveDeviceStateDto>?> GetDeviceRegistryAsync() =>
+    _http.GetFromJsonAsync<List<LiveDeviceStateDto>>("api/sensors/registry");
 }
