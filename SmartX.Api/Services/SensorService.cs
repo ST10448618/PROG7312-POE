@@ -7,7 +7,12 @@ namespace SmartX.Api.Services;
 public class SensorService
 {
     private readonly AppDbContext _db;
-    public SensorService(AppDbContext db) => _db = db;
+    private readonly LiveDeviceRegistry _registry;
+    public SensorService(AppDbContext db, LiveDeviceRegistry registry)
+    {
+        _db = db;
+        _registry = registry;
+    }
 
     public async Task<SensorProfile> RegisterAsync(string mac, string location, string category)
     {
@@ -20,6 +25,8 @@ public class SensorService
         var sensor = new SensorProfile { MacAddress = mac, Location = location, Category = category };
         _db.Sensors.Add(sensor);
         await _db.SaveChangesAsync();
+
+        _registry.Register(mac, location, category);
         return sensor;
     }
 
