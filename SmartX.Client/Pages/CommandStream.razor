@@ -49,7 +49,11 @@
         <h3>Live Device Registry</h3>
         <span style="font-size: 0.8rem; color: var(--text-dim);">@_devices.Count device(s) tracked</span>
     </div>
-    @if (_devices.Count == 0)
+    @if (_loadingDevices)
+    {
+        <p class="empty-state">Loading device registry…</p>
+    }
+    else if (_devices.Count == 0)
     {
         <p class="empty-state">No devices registered yet.</p>
     }
@@ -79,44 +83,48 @@
     private string? _loadError;
     private List<SensorDto> _sensors = new();
     private List<LiveDeviceStateDto> _devices = new();
+    private bool _loadingDevices = true;
 
-    protected override async Task OnInitializedAsync()
+protected override async Task OnInitializedAsync()
+{
+    try
     {
-        try
+        _devices = await Api.GetDeviceRegistryAsync() ?? new();
+        _loadingDevices = false;
+
+        _hub = new HubConnectionBuilder()
+            .WithUrl($"{Config.BaseUrl}/hubs/telemetry")
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hub.Reconnecting += _ => { _connectionState = "Reconnecting…"; return InvokeAsync(StateHasChanged); };
+        _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
+        _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
+
+        _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
         {
-            _hub = new HubConnectionBuilder()
-                .WithUrl($"{Config.BaseUrl}/hubs/telemetry")
-                .WithAutomaticReconnect()
-                .Build();
-
-            _hub.Reconnecting += _ => { _connectionState = "Reconnecting…"; return InvokeAsync(StateHasChanged); };
-            _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
-            _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
-            _sensors = await Api.GetSensorsAsync() ?? new();
-
-            _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
+            try
             {
-                try
-                {
-                    _devices = devices;
-                    await InvokeAsync(StateHasChanged);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"DeviceRegistryUpdated handler failed: {ex}");
-                }
-            });
+                _devices = devices;
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"DeviceRegistryUpdated handler failed: {ex}");
+            }
+        });
 
-            await _hub.StartAsync();
-            _connectionState = "Connected";
-        }
-        catch (Exception ex)
-        {
-            _connectionState = "Disconnected";
-            _loadError = "Couldn't reach the live telemetry hub.";
-            Console.Error.WriteLine(ex);
-        }
+        await _hub.StartAsync();
+        _connectionState = "Connected";
     }
+    catch (Exception ex)
+    {
+        _loadingDevices = false;
+        _connectionState = "Disconnected";
+        _loadError = "Couldn't reach the API or live telemetry hub.";
+        Console.Error.WriteLine(ex);
+    }
+}
 
     private string ConnectionDotClass => _connectionState switch
     {
