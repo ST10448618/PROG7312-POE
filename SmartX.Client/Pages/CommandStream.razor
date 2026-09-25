@@ -59,7 +59,7 @@
                 {
                     <tr>
                         <td class="mono">@s.MacAddress</td>
-                        <td>@s.Category</td>
+                        <td style="color: var(--text);">@s.Category</td>
                         <td><span class="badge badge-emerald">@s.Status</span></td>
                     </tr>
                 }
@@ -87,7 +87,7 @@
             _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
             _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
             _sensors = await Api.GetSensorsAsync() ?? new();
-            
+
             await _hub.StartAsync();
             _connectionState = "Connected";
         }
