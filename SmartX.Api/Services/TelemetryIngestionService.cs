@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using SmartX.Api.Domain.Collections;
 using SmartX.Api.Domain.Entities;
 using SmartX.Api.Domain.ValueObjects;
@@ -29,57 +30,62 @@ public class TelemetryIngestionService
         _registry = registry;
     }
 
-    public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where T : struct
+public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where T : struct
+{
+    var sensor = await _db.Sensors.AsNoTracking().FirstOrDefaultAsync(s => s.MacAddress == packet.SensorId);
+
+    _db.TelemetryLogs.Add(new TelemetryLog
     {
-        _db.TelemetryLogs.Add(new TelemetryLog
-        {
-            SensorId = packet.SensorId,
-            ValueType = typeof(T).Name,
-            RawValue = packet.Value.ToString() ?? "",
-            Unit = packet.Unit,
-            Timestamp = packet.Timestamp
-        });
+        SensorId = packet.SensorId,
+        ValueType = typeof(T).Name,
+        RawValue = packet.Value.ToString() ?? "",
+        Unit = packet.Unit,
+        Timestamp = packet.Timestamp
+    });
 
-        _batches.Append(packet.SensorId, packet.NumericValue, packet.Timestamp);
-        var result = _anomaly.Score(packet.SensorId, packet.NumericValue);
-        var severity = AnomalyDetectionService.SeverityFor(result.Colour);
+    _batches.Append(packet.SensorId, packet.NumericValue, packet.Timestamp);
+    var result = _anomaly.Score(packet.SensorId, packet.NumericValue);
+    var severity = AnomalyDetectionService.SeverityFor(result.Colour);
 
-        if (severity == "Critical")
-            _commandStream.EnqueuePriority(packet.SensorId, priority: 0);
-        else if (severity == "Warning")
-            _commandStream.EnqueuePriority(packet.SensorId, priority: 1);
-        else
-            _commandStream.EnqueueStandard(packet.SensorId);
+    _db.AnomalyLogs.Add(new AnomalyLog
+    {
+        SensorId = packet.SensorId,
+        Value = result.Value,
+        Score = result.Score,
+        Colour = result.Colour.ToString(),
+        Severity = severity,
+        Timestamp = result.Timestamp
+    });
 
-        await _hub.Clients.All.SendAsync("QueueDepthChanged", new
-        {
-            standard = _commandStream.StandardQueueDepth,
-            priority = _commandStream.PriorityQueueDepth
-        });
+    await _db.SaveChangesAsync();
 
-        _db.AnomalyLogs.Add(new AnomalyLog
-        {
-            SensorId = packet.SensorId,
-            Value = result.Value,
-            Score = result.Score,
-            Colour = result.Colour.ToString(),
-            Severity = severity,
-            Timestamp = result.Timestamp
-        });
+    _registry.UpdateReading(
+        packet.SensorId, packet.NumericValue,
+        severity == "Disconnected" ? "Disconnected" : "Online",
+        sensor?.Location, sensor?.Category);
 
-        await _db.SaveChangesAsync();
+    if (severity == "Critical")
+        _commandStream.EnqueuePriority(packet.SensorId, priority: 0);
+    else if (severity == "Warning")
+        _commandStream.EnqueuePriority(packet.SensorId, priority: 1);
+    else
+        _commandStream.EnqueueStandard(packet.SensorId);
 
-        _registry.UpdateReading(packet.SensorId, packet.NumericValue, severity == "Disconnected" ? "Disconnected" : "Online");
+    await _hub.Clients.All.SendAsync("QueueDepthChanged", new
+    {
+        standard = _commandStream.StandardQueueDepth,
+        priority = _commandStream.PriorityQueueDepth
+    });
 
-        await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
-        await _hub.Clients.All.SendAsync("TelemetryIngested", new { packet.SensorId, packet.Timestamp, Value = packet.NumericValue });
-        await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
+    await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
+    await _hub.Clients.All.SendAsync("TelemetryIngested", new { packet.SensorId, packet.Timestamp, Value = packet.NumericValue });
+    await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
 
-        if (severity == "Critical")
-            await _dispatch.NotifyAllAsync(packet.SensorId, result.Value, result.Score);
+    if (severity == "Critical")
+        await _dispatch.NotifyAllAsync(packet.SensorId, result.Value, result.Score);
 
-        return result;
-    }
+    return result;
+}
 
     public async Task<AnomalyResult> MarkDisconnectedAsync(string sensorId)
     {
