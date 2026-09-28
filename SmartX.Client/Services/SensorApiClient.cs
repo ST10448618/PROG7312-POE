@@ -74,4 +74,13 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
 
     public Task<List<LiveDeviceStateDto>?> GetDeviceRegistryAsync() =>
     _http.GetFromJsonAsync<List<LiveDeviceStateDto>>("api/sensors/registry");
+
+    public Task<QueueDepthDto?> GetQueueDepthsAsync() => _http.GetFromJsonAsync<QueueDepthDto>("api/commands/queues");
+    public Task<List<DeviceCommandDto>?> GetCommandHistoryAsync() => _http.GetFromJsonAsync<List<DeviceCommandDto>>("api/commands/history");
+
+    public Task<HttpResponseMessage> IssueCommandAsync(string targetMac, string commandType) =>
+        _http.PostAsJsonAsync("api/commands/issue", new { targetMac, commandType });
+
+    public Task<HttpResponseMessage> UndoLastCommandAsync() =>
+        _http.PostAsync("api/commands/undo", null);
 }
