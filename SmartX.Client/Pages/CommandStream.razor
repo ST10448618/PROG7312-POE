@@ -24,23 +24,56 @@
 <div class="command-grid">
     <section class="card">
         <h3 style="margin-bottom: 0.75rem;">Command Queue</h3>
-        <p class="empty-state">No commands queued yet.</p>
+        <p class="stat-value">@(_queueDepths?.StandardDepth ?? 0)</p>
+        <p class="empty-state">Standard telemetry awaiting processing.</p>
     </section>
 
-        <section class="card">
+    <section class="card">
         <h3 style="margin-bottom: 0.75rem;">Priority Alerts</h3>
-        <p class="empty-state">No priority alerts pending.</p>
+        <p class="stat-value rose">@(_queueDepths?.PriorityDepth ?? 0)</p>
+        <p class="empty-state">Critical/Warning readings bypassing the standard queue.</p>
+    </section>
+
+    <section class="card">
+        <h3 style="margin-bottom: 0.75rem;">Issue a command</h3>
+        <select @bind="_selectedTargetMac" style="margin-bottom: 0.5rem; width: 100%;">
+            <option value="">Select device…</option>
+            @foreach (var d in _devices)
+            {
+                <option value="@d.MacAddress">@d.MacAddress</option>
+            }
+        </select>
+        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+            <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("TriggerPump")'>Trigger Pump</button>
+            <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("ToggleRelay")'>Toggle Relay</button>
+            <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("ShutdownValve")'>Shutdown Valve</button>
+        </div>
+        @if (_commandMessage is not null)
+        {
+            <p class="status-message @(_commandOk ? "ok" : "error")">@_commandMessage</p>
+        }
     </section>
 
     <section class="card">
         <h3 style="margin-bottom: 0.75rem;">Command History</h3>
-        <p class="empty-state">No commands issued yet.</p>
-        <button class="btn-secondary btn-sm" disabled style="margin-top: 0.5rem;">Undo last command</button>
-    </section>
-
-    <section class="card">
-        <h3 style="margin-bottom: 0.75rem;">Suggested Actions</h3>
-        <p class="empty-state">Not enough activity yet to generate suggestions.</p>
+        @if (_commandHistory.Count == 0)
+        {
+            <p class="empty-state">No commands issued yet.</p>
+        }
+        else
+        {
+            <div style="display: flex; flex-direction: column; gap: 0.3rem; max-height: 8rem; overflow-y: auto; margin-bottom: 0.5rem;">
+                @foreach (var cmd in _commandHistory.Take(5))
+                {
+                    <div class="mono" style="font-size: 0.78rem; color: var(--text-dim);">
+                        @cmd.Type → @cmd.TargetMac (@cmd.IssuedAt.ToLocalTime().ToString("HH:mm:ss"))
+                    </div>
+                }
+            </div>
+        }
+        <button class="btn-secondary btn-sm" @onclick="UndoLastCommand" disabled="@(_commandHistory.Count == 0)">
+            Undo last command
+        </button>
     </section>
 </div>
 
@@ -84,6 +117,11 @@
     private List<SensorDto> _sensors = new();
     private List<LiveDeviceStateDto> _devices = new();
     private bool _loadingDevices = true;
+    private QueueDepthDto? _queueDepths;
+    private List<DeviceCommandDto> _commandHistory = new();
+    private string _selectedTargetMac = "";
+    private string? _commandMessage;
+    private bool _commandOk;
 
 protected override async Task OnInitializedAsync()
 {
@@ -153,4 +191,33 @@ protected override async Task OnInitializedAsync()
         "Warning" => "badge-amber",
         _ => "badge-emerald"
     };
-}
+
+    private async Task IssueCommand(string type)
+    {
+        if (string.IsNullOrEmpty(_selectedTargetMac))
+        {
+            _commandMessage = "Select a device first.";
+            _commandOk = false;
+            return;
+        }
+
+        var response = await Api.IssueCommandAsync(_selectedTargetMac, type);
+        _commandOk = response.IsSuccessStatusCode;
+        _commandMessage = _commandOk ? $"{type} sent to {_selectedTargetMac}." : await response.Content.ReadAsStringAsync();
+        await RefreshCommandData();
+    }
+
+    private async Task UndoLastCommand()
+    {
+        var response = await Api.UndoLastCommandAsync();
+        _commandMessage = response.IsSuccessStatusCode ? "Last command undone." : "Nothing to undo.";
+        _commandOk = response.IsSuccessStatusCode;
+        await RefreshCommandData();
+    }
+
+    private async Task RefreshCommandData()
+    {
+        _queueDepths = await Api.GetQueueDepthsAsync();
+        _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
+    }
+    }
