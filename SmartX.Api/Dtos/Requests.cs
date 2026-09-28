@@ -10,3 +10,4 @@ public record ValveReadingRequest(string SensorId, bool Value);
 public record PowerAggregateRequest(PowerReading A, PowerReading B);
 public record DeploymentPathRequest(string Path);
 public record UpdateSensorRequest(string Location, string Category);
+public record IssueCommandRequest(string TargetMac, string CommandType);
