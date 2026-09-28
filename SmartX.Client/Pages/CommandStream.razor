@@ -151,6 +151,11 @@ protected override async Task OnInitializedAsync()
             await InvokeAsync(StateHasChanged);
         });
 
+        _hub.On<DeviceCommandDto>("CommandUndone", async _ =>
+        {
+            _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
+            await InvokeAsync(StateHasChanged);
+        });
 
         _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
         {
