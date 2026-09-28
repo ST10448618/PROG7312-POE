@@ -139,6 +139,19 @@ protected override async Task OnInitializedAsync()
         _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
         _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
 
+        _hub.On<object>("QueueDepthChanged", async _ =>
+        {
+            _queueDepths = await Api.GetQueueDepthsAsync();
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hub.On<DeviceCommandDto>("CommandIssued", async _ =>
+        {
+            _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
+            await InvokeAsync(StateHasChanged);
+        });
+
+
         _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
         {
             try
