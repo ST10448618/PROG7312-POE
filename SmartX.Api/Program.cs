@@ -81,6 +81,7 @@ app.MapHealthChecks("/health");
 app.MapSensorEndpoints();
 app.MapTelemetryEndpoints();
 app.MapPowerEndpoints();
+app.MapCommandStreamEndpoints();
 app.MapDeploymentEndpoints();
 app.MapHub<TelemetryHub>("/hubs/telemetry");
 app.MapAnomalyLogEndpoints();
