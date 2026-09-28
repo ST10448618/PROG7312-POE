@@ -15,6 +15,7 @@ public class TelemetryIngestionService
     private readonly IHubContext<TelemetryHub> _hub;
     private readonly IntegrationDispatchService _dispatch;
     private readonly LiveDeviceRegistry _registry;
+    private readonly CommandStreamService _commandStream;
 
     public TelemetryIngestionService(
         AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
@@ -42,6 +43,19 @@ public class TelemetryIngestionService
         _batches.Append(packet.SensorId, packet.NumericValue, packet.Timestamp);
         var result = _anomaly.Score(packet.SensorId, packet.NumericValue);
         var severity = AnomalyDetectionService.SeverityFor(result.Colour);
+
+        if (severity == "Critical")
+            _commandStream.EnqueuePriority(packet.SensorId, priority: 0);
+        else if (severity == "Warning")
+            _commandStream.EnqueuePriority(packet.SensorId, priority: 1);
+        else
+            _commandStream.EnqueueStandard(packet.SensorId);
+
+        await _hub.Clients.All.SendAsync("QueueDepthChanged", new
+        {
+            standard = _commandStream.StandardQueueDepth,
+            priority = _commandStream.PriorityQueueDepth
+        });
 
         _db.AnomalyLogs.Add(new AnomalyLog
         {
@@ -89,4 +103,18 @@ public class TelemetryIngestionService
         await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
         return result;
     }
-}
+
+    public TelemetryIngestionService(
+        AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
+        IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
+        CommandStreamService commandStream)
+    {
+        _db = db;
+        _anomaly = anomaly;
+        _batches = batches;
+        _hub = hub;
+        _dispatch = dispatch;
+        _registry = registry;
+        _commandStream = commandStream;
+    }
+    }

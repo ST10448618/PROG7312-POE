@@ -51,6 +51,7 @@ builder.Services.AddSingleton<ConnectionTracker>();
 builder.Services.AddScoped<SystemHealthService>();
 builder.Services.AddHostedService<AutoTelemetrySimulator>();
 builder.Services.AddSingleton<LiveDeviceRegistry>();
+builder.Services.AddSingleton<CommandStreamService>();
 
 var app = builder.Build();
 
