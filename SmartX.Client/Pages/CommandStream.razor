@@ -79,6 +79,36 @@
 
 <section class="card" style="margin-top: 1.5rem;">
     <div class="card-header">
+        <h3>Historical Timeline</h3>
+        <button class="btn-secondary btn-sm" @onclick="RefreshTimeline">Refresh</button>
+    </div>
+    @if (_timelineBuckets.Count == 0)
+    {
+        <p class="empty-state">No timeline data yet.</p>
+    }
+    else
+    {
+        <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 16rem; overflow-y: auto;">
+            @foreach (var bucket in _timelineBuckets)
+            {
+                <div style="border-left: 2px solid var(--line); padding-left: 0.75rem;">
+                    <p class="mono" style="font-size: 0.78rem; color: var(--text-dim);">
+                        @bucket.Bucket.ToLocalTime().ToString("HH:mm:ss") · @bucket.Count reading(s)
+                    </p>
+                    @foreach (var reading in bucket.Sensors.Take(3))
+                    {
+                        <p class="mono" style="font-size: 0.75rem; color: var(--text-faint); margin-left: 0.5rem;">
+                            @reading.SensorId: @reading.RawValue@reading.Unit
+                        </p>
+                    }
+                </div>
+            }
+        </div>
+    }
+</section>
+
+<section class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
         <h3>Live Device Registry</h3>
         <span style="font-size: 0.8rem; color: var(--text-dim);">@_devices.Count device(s) tracked</span>
     </div>
@@ -122,6 +152,7 @@
     private string _selectedTargetMac = "";
     private string? _commandMessage;
     private bool _commandOk;
+    private List<TimelineBucketDto> _timelineBuckets = new();
 
 protected override async Task OnInitializedAsync()
 {
@@ -238,4 +269,6 @@ protected override async Task OnInitializedAsync()
         _queueDepths = await Api.GetQueueDepthsAsync();
         _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
     }
+    private async Task RefreshTimeline() => _timelineBuckets = await Api.GetTimelineAsync() ?? new();
+
     }
