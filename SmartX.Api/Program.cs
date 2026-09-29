@@ -53,6 +53,7 @@ builder.Services.AddHostedService<AutoTelemetrySimulator>();
 builder.Services.AddSingleton<LiveDeviceRegistry>();
 builder.Services.AddSingleton<CommandStreamService>();
 builder.Services.AddSingleton<TelemetryTimelineService>();
+builder.Services.AddHostedService<QueueProcessor>();
 
 var app = builder.Build();
 
