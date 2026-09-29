@@ -12,6 +12,7 @@ public class SensorApiClient
     public Task<SensorSummaryDto?> GetSummaryAsync() => _http.GetFromJsonAsync<SensorSummaryDto>("api/sensors/summary");
     public Task<HttpResponseMessage> RegisterAsync(SensorDto sensor) => _http.PostAsJsonAsync("api/sensors", sensor);
     public Task<HttpResponseMessage> UploadFileAsync(string mac, MultipartFormDataContent content) => _http.PostAsync($"api/sensors/{mac}/upload", content);
+    public Task<List<TimelineBucketDto>?> GetTimelineAsync() => _http.GetFromJsonAsync<List<TimelineBucketDto>>("api/commands/timeline");
 
     public async Task<(bool Success, AnomalyCellDto? Result, string? Error)> PushMoistureAsync(string sensorId, float value)
     {
@@ -84,3 +85,4 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
     public Task<HttpResponseMessage> UndoLastCommandAsync() =>
         _http.PostAsync("api/commands/undo", null);
 }
+
