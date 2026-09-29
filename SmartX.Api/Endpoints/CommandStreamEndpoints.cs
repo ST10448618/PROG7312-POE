@@ -40,5 +40,13 @@ public static class CommandStreamEndpoints
             await hub.Clients.All.SendAsync("CommandUndone", undone);
             return Results.Ok(undone);
         });
+
+        group.MapGet("/timeline", (TelemetryTimelineService timeline) =>
+        Results.Ok(timeline.GetChronological().Select(b => new
+        {
+            bucket = b.Bucket,
+            count = b.Readings.Count,
+            sensors = b.Readings.Select(r => new { r.SensorId, r.RawValue, r.Unit }).ToList()
+        })));
     }
 }
