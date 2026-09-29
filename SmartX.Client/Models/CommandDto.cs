@@ -14,3 +14,17 @@ public class QueueDepthDto
     public int StandardDepth { get; set; }
     public int PriorityDepth { get; set; }
 }
+
+public class TimelineBucketDto
+{
+    public DateTime Bucket { get; set; }
+    public int Count { get; set; }
+    public List<TimelineReadingDto> Sensors { get; set; } = new();
+}
+
+public class TimelineReadingDto
+{
+    public string SensorId { get; set; } = "";
+    public string RawValue { get; set; } = "";
+    public string Unit { get; set; } = "";
+}
