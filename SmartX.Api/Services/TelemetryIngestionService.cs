@@ -17,6 +17,7 @@ public class TelemetryIngestionService
     private readonly IntegrationDispatchService _dispatch;
     private readonly LiveDeviceRegistry _registry;
     private readonly CommandStreamService _commandStream;
+    private readonly TelemetryTimelineService _timeline;
 
     public TelemetryIngestionService(
         AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
@@ -34,14 +35,16 @@ public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where
 {
     var sensor = await _db.Sensors.AsNoTracking().FirstOrDefaultAsync(s => s.MacAddress == packet.SensorId);
 
-    _db.TelemetryLogs.Add(new TelemetryLog
+    var log = new TelemetryLog
     {
         SensorId = packet.SensorId,
         ValueType = typeof(T).Name,
         RawValue = packet.Value.ToString() ?? "",
         Unit = packet.Unit,
         Timestamp = packet.Timestamp
-    });
+    };
+    _db.TelemetryLogs.Add(log);
+    _timeline.Record(log);
 
     _batches.Append(packet.SensorId, packet.NumericValue, packet.Timestamp);
     var result = _anomaly.Score(packet.SensorId, packet.NumericValue);
@@ -123,4 +126,19 @@ public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where
         _registry = registry;
         _commandStream = commandStream;
     }
+
+    public TelemetryIngestionService(
+        AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
+        IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
+        CommandStreamService commandStream, TelemetryTimelineService timeline)
+    {
+        _db = db;
+        _anomaly = anomaly;
+        _batches = batches;
+        _hub = hub;
+        _dispatch = dispatch;
+        _registry = registry;
+        _commandStream = commandStream;
+        _timeline = timeline;
     }
+}
