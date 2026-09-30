@@ -20,84 +20,85 @@ public class TelemetryIngestionService
     private readonly TelemetryTimelineService _timeline;
     private readonly ActiveFaultTracker _faultTracker;
 
-public TelemetryIngestionService(
-    AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
-    IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
-    CommandStreamService commandStream, TelemetryTimelineService timeline, ActiveFaultTracker faultTracker)
-{
-    _db = db;
-    _anomaly = anomaly;
-    _batches = batches;
-    _hub = hub;
-    _dispatch = dispatch;
-    _registry = registry;
-    _commandStream = commandStream;
-    _timeline = timeline;
-    _faultTracker = faultTracker;
-}
-
-public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where T : struct
-{
-    var sensor = await _db.Sensors.AsNoTracking().FirstOrDefaultAsync(s => s.MacAddress == packet.SensorId);
-
-    var log = new TelemetryLog
+    public TelemetryIngestionService(
+        AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
+        IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
+        CommandStreamService commandStream, TelemetryTimelineService timeline, ActiveFaultTracker faultTracker)
     {
-        SensorId = packet.SensorId,
-        ValueType = typeof(T).Name,
-        RawValue = packet.Value.ToString() ?? "",
-        Unit = packet.Unit,
-        Timestamp = packet.Timestamp
-    };
-    _db.TelemetryLogs.Add(log);
-    _timeline.Record(log);
-
-    _batches.Append(packet.SensorId, packet.NumericValue, packet.Timestamp);
-    var result = _anomaly.Score(packet.SensorId, packet.NumericValue);
-    var severity = AnomalyDetectionService.SeverityFor(result.Colour);
-
-    _db.AnomalyLogs.Add(new AnomalyLog
-    {
-        SensorId = packet.SensorId,
-        Value = result.Value,
-        Score = result.Score,
-        Colour = result.Colour.ToString(),
-        Severity = severity,
-        Timestamp = result.Timestamp
-    });
-
-    await _db.SaveChangesAsync();
-
-    _registry.UpdateReading(
-        packet.SensorId, packet.NumericValue,
-        severity == "Disconnected" ? "Disconnected" : "Online",
-        sensor?.Location, sensor?.Category);
-
-    if (severity == "Critical")
-        _commandStream.EnqueuePriority(packet.SensorId, priority: 0);
-    else if (severity == "Warning")
-        _commandStream.EnqueuePriority(packet.SensorId, priority: 1);
-    else
-        _commandStream.EnqueueStandard(packet.SensorId);
-
-    await _hub.Clients.All.SendAsync("QueueDepthChanged", new
-    {
-        standard = _commandStream.StandardQueueDepth,
-        priority = _commandStream.PriorityQueueDepth
-    });
-
-    await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
-    await _hub.Clients.All.SendAsync("TelemetryIngested", new { packet.SensorId, packet.Timestamp, Value = packet.NumericValue });
-    await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
-
-    if (severity == "Critical")
-        await _dispatch.NotifyAllAsync(packet.SensorId, result.Value, result.Score);
-        
-    if (severity == "Normal" && _faultTracker.ClearFault(packet.SensorId))
-    {
-        await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
+        _db = db;
+        _anomaly = anomaly;
+        _batches = batches;
+        _hub = hub;
+        _dispatch = dispatch;
+        _registry = registry;
+        _commandStream = commandStream;
+        _timeline = timeline;
+        _faultTracker = faultTracker;
     }
-    return result;
-}
+
+    public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where T : struct
+    {
+        var sensor = await _db.Sensors.AsNoTracking().FirstOrDefaultAsync(s => s.MacAddress == packet.SensorId);
+
+        var log = new TelemetryLog
+        {
+            SensorId = packet.SensorId,
+            ValueType = typeof(T).Name,
+            RawValue = packet.Value.ToString() ?? "",
+            Unit = packet.Unit,
+            Timestamp = packet.Timestamp
+        };
+        _db.TelemetryLogs.Add(log);
+        _timeline.Record(log);
+
+        _batches.Append(packet.SensorId, packet.NumericValue, packet.Timestamp);
+        var result = _anomaly.Score(packet.SensorId, packet.NumericValue);
+        var severity = AnomalyDetectionService.SeverityFor(result.Colour);
+
+        _db.AnomalyLogs.Add(new AnomalyLog
+        {
+            SensorId = packet.SensorId,
+            Value = result.Value,
+            Score = result.Score,
+            Colour = result.Colour.ToString(),
+            Severity = severity,
+            Timestamp = result.Timestamp
+        });
+
+        await _db.SaveChangesAsync();
+
+        _registry.UpdateReading(
+            packet.SensorId, packet.NumericValue,
+            severity == "Disconnected" ? "Disconnected" : "Online",
+            sensor?.Location, sensor?.Category);
+
+        if (severity == "Critical")
+            _commandStream.EnqueuePriority(packet.SensorId, priority: 0);
+        else if (severity == "Warning")
+            _commandStream.EnqueuePriority(packet.SensorId, priority: 1);
+        else
+            _commandStream.EnqueueStandard(packet.SensorId);
+
+        await _hub.Clients.All.SendAsync("QueueDepthChanged", new
+        {
+            standard = _commandStream.StandardQueueDepth,
+            priority = _commandStream.PriorityQueueDepth
+        });
+
+        await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
+        await _hub.Clients.All.SendAsync("TelemetryIngested", new { packet.SensorId, packet.Timestamp, Value = packet.NumericValue });
+        await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
+
+        if (severity == "Critical")
+            await _dispatch.NotifyAllAsync(packet.SensorId, result.Value, result.Score);
+
+        if (severity == "Normal" && _faultTracker.ClearFault(packet.SensorId))
+        {
+            await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
+        }
+
+        return result;
+    }
 
     public async Task<AnomalyResult> MarkDisconnectedAsync(string sensorId)
     {
@@ -125,39 +126,9 @@ public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where
 
         if (isNewFault)
         {
-            // only log/alert once per genuinely new fault, not on every repeated disconnect call
             Console.WriteLine($"New fault registered for {sensorId}");
         }
 
         return result;
-    }
-
-    public TelemetryIngestionService(
-        AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
-        IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
-        CommandStreamService commandStream)
-    {
-        _db = db;
-        _anomaly = anomaly;
-        _batches = batches;
-        _hub = hub;
-        _dispatch = dispatch;
-        _registry = registry;
-        _commandStream = commandStream;
-    }
-
-    public TelemetryIngestionService(
-        AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
-        IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
-        CommandStreamService commandStream, TelemetryTimelineService timeline)
-    {
-        _db = db;
-        _anomaly = anomaly;
-        _batches = batches;
-        _hub = hub;
-        _dispatch = dispatch;
-        _registry = registry;
-        _commandStream = commandStream;
-        _timeline = timeline;
     }
 }
