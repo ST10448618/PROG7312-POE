@@ -48,5 +48,7 @@ public static class CommandStreamEndpoints
             count = b.Readings.Count,
             sensors = b.Readings.Select(r => new { r.SensorId, r.RawValue, r.Unit }).ToList()
         })));
+
+        group.MapGet("/faults", (ActiveFaultTracker faults) => Results.Ok(faults.GetAllFaulted()));
     }
 }
