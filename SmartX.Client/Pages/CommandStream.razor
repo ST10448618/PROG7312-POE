@@ -79,6 +79,26 @@
 
 <section class="card" style="margin-top: 1.5rem;">
     <div class="card-header">
+        <h3>Active Faults</h3>
+        <span style="font-size: 0.8rem; color: var(--text-dim);">@_activeFaults.Count unique fault(s)</span>
+    </div>
+    @if (_activeFaults.Count == 0)
+    {
+        <p class="empty-state">No active faults — all devices reporting normally.</p>
+    }
+    else
+    {
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            @foreach (var mac in _activeFaults)
+            {
+                <span class="badge badge-info mono">@mac</span>
+            }
+        </div>
+    }
+</section>
+
+<section class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
         <h3>Historical Timeline</h3>
         <button class="btn-secondary btn-sm" @onclick="RefreshTimeline">Refresh</button>
     </div>
@@ -153,6 +173,7 @@
     private string? _commandMessage;
     private bool _commandOk;
     private List<TimelineBucketDto> _timelineBuckets = new();
+    private List<string> _activeFaults = new();
 
 protected override async Task OnInitializedAsync()
 {
@@ -188,6 +209,12 @@ protected override async Task OnInitializedAsync()
             await InvokeAsync(StateHasChanged);
         });
 
+        _hub.On<List<string>>("FaultSetChanged", async faults =>
+        {
+            _activeFaults = faults;
+            await InvokeAsync(StateHasChanged);
+        });
+
         _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
         {
             try
@@ -200,6 +227,8 @@ protected override async Task OnInitializedAsync()
                 Console.Error.WriteLine($"DeviceRegistryUpdated handler failed: {ex}");
             }
         });
+
+        _activeFaults = await Api.GetActiveFaultsAsync() ?? new();
 
         await _hub.StartAsync();
         _connectionState = "Connected";
