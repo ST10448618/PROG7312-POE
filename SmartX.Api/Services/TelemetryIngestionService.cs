@@ -18,18 +18,23 @@ public class TelemetryIngestionService
     private readonly LiveDeviceRegistry _registry;
     private readonly CommandStreamService _commandStream;
     private readonly TelemetryTimelineService _timeline;
+    private readonly ActiveFaultTracker _faultTracker;
 
-    public TelemetryIngestionService(
-        AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
-        IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry)
-    {
-        _db = db;
-        _anomaly = anomaly;
-        _batches = batches;
-        _hub = hub;
-        _dispatch = dispatch;
-        _registry = registry;
-    }
+public TelemetryIngestionService(
+    AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
+    IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
+    CommandStreamService commandStream, TelemetryTimelineService timeline, ActiveFaultTracker faultTracker)
+{
+    _db = db;
+    _anomaly = anomaly;
+    _batches = batches;
+    _hub = hub;
+    _dispatch = dispatch;
+    _registry = registry;
+    _commandStream = commandStream;
+    _timeline = timeline;
+    _faultTracker = faultTracker;
+}
 
 public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where T : struct
 {
@@ -86,7 +91,11 @@ public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where
 
     if (severity == "Critical")
         await _dispatch.NotifyAllAsync(packet.SensorId, result.Value, result.Score);
-
+        
+    if (severity == "Normal" && _faultTracker.ClearFault(packet.SensorId))
+    {
+        await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
+    }
     return result;
 }
 
@@ -110,6 +119,16 @@ public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where
 
         await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
         await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
+
+        var isNewFault = _faultTracker.MarkFaulted(sensorId);
+        await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
+
+        if (isNewFault)
+        {
+            // only log/alert once per genuinely new fault, not on every repeated disconnect call
+            Console.WriteLine($"New fault registered for {sensorId}");
+        }
+
         return result;
     }
 
