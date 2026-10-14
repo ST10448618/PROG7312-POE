@@ -1,8 +1,8 @@
+using Microsoft.AspNetCore.SignalR;
 using SmartX.Api.Domain.Models;
 using SmartX.Api.Dtos;
 using SmartX.Api.Hubs;
 using SmartX.Api.Services;
-using Microsoft.AspNetCore.SignalR;
 
 namespace SmartX.Api.Endpoints;
 
@@ -20,15 +20,28 @@ public static class CommandStreamEndpoints
 
         group.MapGet("/history", (CommandStreamService cmds) => Results.Ok(cmds.GetHistorySnapshot()));
 
-        group.MapPost("/issue", async (IssueCommandRequest req, CommandStreamService cmds, IHubContext<TelemetryHub> hub) =>
+        group.MapGet("/timeline", (TelemetryTimelineService timeline) =>
+            Results.Ok(timeline.GetChronological().Select(b => new
+            {
+                bucket = b.Bucket,
+                count = b.Readings.Count,
+                sensors = b.Readings.Select(r => new { r.SensorId, r.RawValue, r.Unit }).ToList()
+            })));
+
+        group.MapGet("/faults", (ActiveFaultTracker faults) => Results.Ok(faults.GetAllFaulted()));
+
+        group.MapPost("/issue", async (IssueCommandRequest req, CommandStreamService cmds,
+            PredictiveActionEngine engine, IHubContext<TelemetryHub> hub) =>
         {
             if (!Enum.TryParse<CommandType>(req.CommandType, out var type))
                 throw new ArgumentException($"Unknown command type '{req.CommandType}'.");
 
             var command = new DeviceCommand { TargetMac = req.TargetMac, Type = type, IsPriority = true };
             cmds.PushCommand(command);
+            engine.RecordUserAction($"Command:{type}:{req.TargetMac}");
 
             await hub.Clients.All.SendAsync("CommandIssued", command);
+            await hub.Clients.All.SendAsync("InsightsUpdated", engine.Snapshot());
             return Results.Ok(command);
         });
 
@@ -40,15 +53,5 @@ public static class CommandStreamEndpoints
             await hub.Clients.All.SendAsync("CommandUndone", undone);
             return Results.Ok(undone);
         });
-
-        group.MapGet("/timeline", (TelemetryTimelineService timeline) =>
-        Results.Ok(timeline.GetChronological().Select(b => new
-        {
-            bucket = b.Bucket,
-            count = b.Readings.Count,
-            sensors = b.Readings.Select(r => new { r.SensorId, r.RawValue, r.Unit }).ToList()
-        })));
-
-        group.MapGet("/faults", (ActiveFaultTracker faults) => Results.Ok(faults.GetAllFaulted()));
     }
 }
