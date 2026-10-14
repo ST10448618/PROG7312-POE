@@ -55,6 +55,8 @@ builder.Services.AddSingleton<CommandStreamService>();
 builder.Services.AddSingleton<TelemetryTimelineService>();
 builder.Services.AddHostedService<QueueProcessor>();
 builder.Services.AddSingleton<ActiveFaultTracker>();
+builder.Services.AddSingleton<PredictiveActionEngine>();
+builder.Services.AddHostedService<PatternHistorySeeder>();
 
 var app = builder.Build();
 
@@ -82,6 +84,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapHealthChecks("/health");
 app.MapSensorEndpoints();
+app.MapInsightsEndpoints();
 app.MapTelemetryEndpoints();
 app.MapPowerEndpoints();
 app.MapCommandStreamEndpoints();

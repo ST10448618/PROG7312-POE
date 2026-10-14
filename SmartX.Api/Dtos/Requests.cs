@@ -11,3 +11,4 @@ public record PowerAggregateRequest(PowerReading A, PowerReading B);
 public record DeploymentPathRequest(string Path);
 public record UpdateSensorRequest(string Location, string Category);
 public record IssueCommandRequest(string TargetMac, string CommandType);
+public record SearchActivityRequest(string? Text, string? Category, string? State);
