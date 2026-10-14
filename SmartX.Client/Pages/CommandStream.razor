@@ -12,7 +12,7 @@
         <span class="pulse-dot @ConnectionDotClass"><span class="ping pulse-slow"></span><span class="core"></span></span>
     </div>
     <p class="page-subtitle">
-        Live command queue · priority alerts · undo history · <span class="@ConnectionTextClass">@_connectionState</span>
+        Live command queue · priority alerts · undo history · @_connectionState
     </p>
 </div>
 
@@ -77,6 +77,54 @@
     </section>
 </div>
 
+<div class="insights-grid">
+    <section class="card">
+        <div class="card-header">
+            <h3>Suggested Actions</h3>
+            <span style="font-size: 0.78rem; color: var(--text-dim);">learned from your command &amp; search history</span>
+        </div>
+        @if (_insights.Suggestions.Count == 0)
+        {
+            <p class="empty-state">No active patterns. Suggestions appear while a recent alert matches your past responses.</p>
+        }
+        else
+        {
+            @foreach (var s in _insights.Suggestions)
+            {
+                <div class="insight-row suggestion">
+                    <p class="insight-title">@s.Title</p>
+                    <p class="insight-detail">@s.Detail</p>
+                    <div class="confidence-track"><div class="confidence-fill" style="width: @((int)(s.Confidence * 100))%"></div></div>
+                    <button class="btn-secondary btn-sm" @onclick="() => RunSuggestion(s)">
+                        @(s.Kind == "Command" ? "Run" : "Apply filter")
+                    </button>
+                </div>
+            }
+        }
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h3>Automated Insights</h3>
+            <span style="font-size: 0.78rem; color: var(--text-dim);">@_insights.Insights.Count issue(s) detected</span>
+        </div>
+        @if (_insights.Insights.Count == 0)
+        {
+            <p class="empty-state">All devices look healthy.</p>
+        }
+        else
+        {
+            @foreach (var i in _insights.Insights)
+            {
+                <div class="insight-row @i.Severity.ToLowerInvariant()">
+                    <p class="insight-title">@i.Title</p>
+                    <p class="insight-detail">@i.Detail</p>
+                </div>
+            }
+        }
+    </section>
+</div>
+
 <section class="card" style="margin-top: 1.5rem;">
     <div class="card-header">
         <h3>Active Faults</h3>
@@ -128,24 +176,47 @@
 </section>
 
 <section class="card" style="margin-top: 1.5rem;">
+    @{ var shown = FilteredDevices.ToList(); }
     <div class="card-header">
         <h3>Live Device Registry</h3>
-        <span style="font-size: 0.8rem; color: var(--text-dim);">@_devices.Count device(s) tracked</span>
+        <span style="font-size: 0.8rem; color: var(--text-dim);">showing @shown.Count of @_devices.Count device(s)</span>
     </div>
+
+    <div class="filter-bar">
+        <input placeholder="Search MAC or location, press Enter…"
+               @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKeyDown" />
+        <select @bind="_filterCategory" @bind:after="OnFilterCommitted">
+            <option value="">All categories</option>
+            <option value="Environmental">Environmental</option>
+            <option value="Power Consumption">Power Consumption</option>
+            <option value="Actuator">Actuator</option>
+        </select>
+        <select @bind="_filterState" @bind:after="OnFilterCommitted">
+            <option value="">All states</option>
+            <option value="Online">Online</option>
+            <option value="Warning">Warning</option>
+            <option value="Critical">Critical</option>
+            <option value="Disconnected">Disconnected</option>
+            <option value="Faulted">Faulted</option>
+            <option value="OutOfRange">Out of range</option>
+        </select>
+        <button class="btn-secondary btn-sm" @onclick="ClearFilters">Clear</button>
+    </div>
+
     @if (_loadingDevices)
     {
         <p class="empty-state">Loading device registry…</p>
     }
-    else if (_devices.Count == 0)
+    else if (shown.Count == 0)
     {
-        <p class="empty-state">No devices registered yet.</p>
+        <p class="empty-state">No devices match the current filters.</p>
     }
     else
     {
         <table class="data-table">
             <thead><tr><th>MAC</th><th>Category</th><th>Last Value</th><th>Status</th><th>Last Seen</th></tr></thead>
             <tbody>
-                @foreach (var d in _devices.OrderBy(d => d.MacAddress))
+                @foreach (var d in shown)
                 {
                     <tr>
                         <td class="mono">@d.MacAddress</td>
@@ -164,111 +235,168 @@
     private HubConnection? _hub;
     private string _connectionState = "Connecting…";
     private string? _loadError;
-    private List<SensorDto> _sensors = new();
+
     private List<LiveDeviceStateDto> _devices = new();
     private bool _loadingDevices = true;
     private QueueDepthDto? _queueDepths;
     private List<DeviceCommandDto> _commandHistory = new();
+    private List<TimelineBucketDto> _timelineBuckets = new();
+    private List<string> _activeFaults = new();
+    private InsightsSnapshotDto _insights = new();
+
     private string _selectedTargetMac = "";
     private string? _commandMessage;
     private bool _commandOk;
-    private List<TimelineBucketDto> _timelineBuckets = new();
-    private List<string> _activeFaults = new();
 
-protected override async Task OnInitializedAsync()
-{
-    try
+    private string _searchText = "";
+    private string _filterCategory = "";
+    private string _filterState = "";
+
+    protected override async Task OnInitializedAsync()
     {
-        _devices = await Api.GetDeviceRegistryAsync() ?? new();
-        _loadingDevices = false;
-
-        _hub = new HubConnectionBuilder()
-            .WithUrl($"{Config.BaseUrl}/hubs/telemetry")
-            .WithAutomaticReconnect()
-            .Build();
-
-        _hub.Reconnecting += _ => { _connectionState = "Reconnecting…"; return InvokeAsync(StateHasChanged); };
-        _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
-        _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
-
-        _hub.On<object>("QueueDepthChanged", async _ =>
+        try
         {
-            _queueDepths = await Api.GetQueueDepthsAsync();
-            await InvokeAsync(StateHasChanged);
-        });
+            _devices = await Api.GetDeviceRegistryAsync() ?? new();
+            _loadingDevices = false;
+            _activeFaults = await Api.GetActiveFaultsAsync() ?? new();
+            _insights = await Api.GetInsightsAsync() ?? new();
+            await RefreshCommandData();
+            await RefreshTimeline();
 
-        _hub.On<DeviceCommandDto>("CommandIssued", async _ =>
-        {
-            _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
-            await InvokeAsync(StateHasChanged);
-        });
+            _hub = new HubConnectionBuilder()
+                .WithUrl($"{Config.BaseUrl}/hubs/telemetry")
+                .WithAutomaticReconnect()
+                .Build();
 
-        _hub.On<DeviceCommandDto>("CommandUndone", async _ =>
-        {
-            _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
-            await InvokeAsync(StateHasChanged);
-        });
+            _hub.Reconnecting += _ => { _connectionState = "Reconnecting…"; return InvokeAsync(StateHasChanged); };
+            _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
+            _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
 
-        _hub.On<List<string>>("FaultSetChanged", async faults =>
-        {
-            _activeFaults = faults;
-            await InvokeAsync(StateHasChanged);
-        });
+            _hub.On<object>("QueueDepthChanged", async _ =>
+            {
+                try
+                {
+                    _queueDepths = await Api.GetQueueDepthsAsync();
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex) { Console.Error.WriteLine($"QueueDepthChanged handler failed: {ex}"); }
+            });
 
-        _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
-        {
-            try
+            _hub.On<DeviceCommandDto>("CommandIssued", async _ =>
+            {
+                try
+                {
+                    _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex) { Console.Error.WriteLine($"CommandIssued handler failed: {ex}"); }
+            });
+
+            _hub.On<DeviceCommandDto>("CommandUndone", async _ =>
+            {
+                try
+                {
+                    _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex) { Console.Error.WriteLine($"CommandUndone handler failed: {ex}"); }
+            });
+
+            _hub.On<List<string>>("FaultSetChanged", async faults =>
+            {
+                _activeFaults = faults;
+                await InvokeAsync(StateHasChanged);
+            });
+
+            _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
             {
                 _devices = devices;
                 await InvokeAsync(StateHasChanged);
-            }
-            catch (Exception ex)
+            });
+
+            _hub.On<InsightsSnapshotDto>("InsightsUpdated", async snapshot =>
             {
-                Console.Error.WriteLine($"DeviceRegistryUpdated handler failed: {ex}");
-            }
-        });
+                _insights = snapshot;
+                await InvokeAsync(StateHasChanged);
+            });
 
-        _activeFaults = await Api.GetActiveFaultsAsync() ?? new();
-
-        await _hub.StartAsync();
-        _connectionState = "Connected";
-    }
-    catch (Exception ex)
-    {
-        _loadingDevices = false;
-        _connectionState = "Disconnected";
-        _loadError = "Couldn't reach the API or live telemetry hub.";
-        Console.Error.WriteLine(ex);
-    }
-}
-
-    private string ConnectionDotClass => _connectionState switch
-    {
-        "Connected" => "",
-        "Reconnecting…" => "amber",
-        _ => "rose"
-    };
-
-    private string ConnectionTextClass => _connectionState switch
-    {
-        "Connected" => "",
-        "Reconnecting…" => "",
-        _ => ""
-    };
-
-    public async ValueTask DisposeAsync()
-    {
-        try { if (_hub is not null) await _hub.DisposeAsync(); }
-        catch { /* connection may never have fully established; safe to ignore on teardown */ }
+            await _hub.StartAsync();
+            _connectionState = "Connected";
+        }
+        catch (Exception ex)
+        {
+            _loadingDevices = false;
+            _connectionState = "Disconnected";
+            _loadError = "Couldn't reach the API or live telemetry hub.";
+            Console.Error.WriteLine(ex);
+        }
     }
 
-    private static string StatusBadge(string status) => status switch
+    // ---------- search / filter ----------
+
+    private IEnumerable<LiveDeviceStateDto> FilteredDevices
     {
-        "Disconnected" => "badge-info",
-        "Critical" => "badge-rose",
-        "Warning" => "badge-amber",
-        _ => "badge-emerald"
-    };
+        get
+        {
+            var faultSet = new HashSet<string>(_activeFaults); // O(1) membership per device
+            return _devices
+                .Where(d => string.IsNullOrWhiteSpace(_searchText)
+                            || d.MacAddress.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+                            || d.Location.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
+                .Where(d => _filterCategory == "" || d.Category == _filterCategory)
+                .Where(d => _filterState switch
+                {
+                    "" => true,
+                    "Faulted" => faultSet.Contains(d.MacAddress),
+                    "OutOfRange" => d.LastValue is double v && (v < 0 || v > 100),
+                    _ => d.Status == _filterState
+                })
+                .OrderBy(d => d.MacAddress);
+        }
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await OnFilterCommitted();
+    }
+
+    /// <summary>Records the committed search so the predictive engine can learn from it.</summary>
+    private async Task OnFilterCommitted()
+    {
+        if (string.IsNullOrWhiteSpace(_searchText) && _filterCategory == "" && _filterState == "") return;
+        try { await Api.RecordSearchAsync(_searchText, _filterCategory, _filterState); }
+        catch (Exception ex) { Console.Error.WriteLine(ex); }
+    }
+
+    private void ClearFilters()
+    {
+        _searchText = "";
+        _filterCategory = "";
+        _filterState = "";
+    }
+
+    // ---------- suggestions ----------
+
+    private async Task RunSuggestion(SuggestionDto s)
+    {
+        if (s.Kind == "Command" && s.TargetMac is not null && s.CommandType is not null)
+        {
+            _selectedTargetMac = s.TargetMac;
+            var response = await Api.IssueCommandAsync(s.TargetMac, s.CommandType);
+            _commandOk = response.IsSuccessStatusCode;
+            _commandMessage = _commandOk ? $"{s.Title} executed." : await response.Content.ReadAsStringAsync();
+            await RefreshCommandData();
+        }
+        else if (s.Kind == "Search")
+        {
+            _searchText = s.Text ?? "";
+            _filterCategory = s.Category ?? "";
+            _filterState = s.State ?? "";
+            await OnFilterCommitted();
+        }
+    }
+
+    // ---------- commands ----------
 
     private async Task IssueCommand(string type)
     {
@@ -298,6 +426,29 @@ protected override async Task OnInitializedAsync()
         _queueDepths = await Api.GetQueueDepthsAsync();
         _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
     }
+
     private async Task RefreshTimeline() => _timelineBuckets = await Api.GetTimelineAsync() ?? new();
 
+    // ---------- helpers ----------
+
+    private string ConnectionDotClass => _connectionState switch
+    {
+        "Connected" => "",
+        "Reconnecting…" => "amber",
+        _ => "rose"
+    };
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Disconnected" => "badge-info",
+        "Critical" => "badge-rose",
+        "Warning" => "badge-amber",
+        _ => "badge-emerald"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try { if (_hub is not null) await _hub.DisposeAsync(); }
+        catch { /* connection may never have fully established; safe to ignore on teardown */ }
     }
+}

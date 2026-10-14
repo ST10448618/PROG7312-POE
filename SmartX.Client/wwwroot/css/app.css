@@ -298,3 +298,26 @@ input[type="file"]::file-selector-button:hover { background: var(--panel); }
 @media (max-width: 640px) {
     .command-grid { grid-template-columns: 1fr; }
 }
+
+.filter-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.filter-bar input {
+    flex: 1; min-width: 200px;
+    background: var(--bg); border: 1px solid var(--line); color: var(--text);
+    padding: 0.5rem 0.75rem; border-radius: 6px; font-family: inherit; font-size: 0.875rem;
+}
+.filter-bar input::placeholder { color: var(--text-faint); }
+
+.insights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+.insight-row {
+    border-left: 3px solid var(--line); background: var(--panel-hover);
+    padding: 0.65rem 0.9rem; margin-bottom: 0.6rem; border-radius: 0 8px 8px 0;
+}
+.insight-row.critical { border-left-color: var(--rose); }
+.insight-row.warning { border-left-color: var(--amber); }
+.insight-row.suggestion { border-left-color: var(--emerald); }
+.insight-title { color: var(--text); font-weight: 500; font-size: 0.9rem; margin: 0; }
+.insight-detail { color: var(--text-dim); font-size: 0.8rem; margin: 0.2rem 0 0; }
+.confidence-track { height: 4px; background: var(--line); border-radius: 999px; margin: 0.5rem 0; overflow: hidden; }
+.confidence-fill { height: 100%; background: var(--emerald); }
+
+@media (max-width: 900px) { .insights-grid { grid-template-columns: 1fr; } }
