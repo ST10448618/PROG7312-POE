@@ -19,11 +19,13 @@ public class TelemetryIngestionService
     private readonly CommandStreamService _commandStream;
     private readonly TelemetryTimelineService _timeline;
     private readonly ActiveFaultTracker _faultTracker;
+    private readonly PredictiveActionEngine _engine;
 
     public TelemetryIngestionService(
         AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
         IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
-        CommandStreamService commandStream, TelemetryTimelineService timeline, ActiveFaultTracker faultTracker)
+        CommandStreamService commandStream, TelemetryTimelineService timeline,
+        ActiveFaultTracker faultTracker, PredictiveActionEngine engine)
     {
         _db = db;
         _anomaly = anomaly;
@@ -34,6 +36,7 @@ public class TelemetryIngestionService
         _commandStream = commandStream;
         _timeline = timeline;
         _faultTracker = faultTracker;
+        _engine = engine;
     }
 
     public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where T : struct
@@ -67,10 +70,18 @@ public class TelemetryIngestionService
 
         await _db.SaveChangesAsync();
 
-        _registry.UpdateReading(
-            packet.SensorId, packet.NumericValue,
-            severity == "Disconnected" ? "Disconnected" : "Online",
-            sensor?.Location, sensor?.Category);
+        // Predictive engine learns from every Critical/Warning alert.
+        if (severity is "Critical" or "Warning")
+            _engine.RecordAlert(packet.SensorId, severity);
+
+        var deviceStatus = severity switch
+        {
+            "Disconnected" => "Disconnected",
+            "Critical" => "Critical",
+            "Warning" => "Warning",
+            _ => "Online"
+        };
+        _registry.UpdateReading(packet.SensorId, packet.NumericValue, deviceStatus, sensor?.Location, sensor?.Category);
 
         if (severity == "Critical")
             _commandStream.EnqueuePriority(packet.SensorId, priority: 0);
@@ -79,23 +90,21 @@ public class TelemetryIngestionService
         else
             _commandStream.EnqueueStandard(packet.SensorId);
 
+        if (severity == "Normal" && _faultTracker.ClearFault(packet.SensorId))
+            await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
+
         await _hub.Clients.All.SendAsync("QueueDepthChanged", new
         {
             standard = _commandStream.StandardQueueDepth,
             priority = _commandStream.PriorityQueueDepth
         });
-
         await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
         await _hub.Clients.All.SendAsync("TelemetryIngested", new { packet.SensorId, packet.Timestamp, Value = packet.NumericValue });
         await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
+        await _hub.Clients.All.SendAsync("InsightsUpdated", _engine.Snapshot());
 
         if (severity == "Critical")
             await _dispatch.NotifyAllAsync(packet.SensorId, result.Value, result.Score);
-
-        if (severity == "Normal" && _faultTracker.ClearFault(packet.SensorId))
-        {
-            await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
-        }
 
         return result;
     }
@@ -116,18 +125,17 @@ public class TelemetryIngestionService
         });
         await _db.SaveChangesAsync();
 
+        _engine.RecordAlert(sensorId, "Disconnected");
         _registry.UpdateReading(sensorId, 0, "Disconnected");
+
+        var isNewFault = _faultTracker.MarkFaulted(sensorId);
+        if (isNewFault)
+            Console.WriteLine($"New fault registered for {sensorId}");
 
         await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
         await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
-
-        var isNewFault = _faultTracker.MarkFaulted(sensorId);
         await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
-
-        if (isNewFault)
-        {
-            Console.WriteLine($"New fault registered for {sensorId}");
-        }
+        await _hub.Clients.All.SendAsync("InsightsUpdated", _engine.Snapshot());
 
         return result;
     }
