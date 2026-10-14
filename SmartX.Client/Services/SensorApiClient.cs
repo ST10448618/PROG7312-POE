@@ -85,5 +85,7 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
     public Task<HttpResponseMessage> UndoLastCommandAsync() =>
         _http.PostAsync("api/commands/undo", null);
     public Task<List<string>?> GetActiveFaultsAsync() => _http.GetFromJsonAsync<List<string>>("api/commands/faults");
+    public Task<List<SensorFileDto>?> GetSensorFilesAsync(string mac) =>
+    _http.GetFromJsonAsync<List<SensorFileDto>>($"api/sensors/{mac}/files");
 }
 

@@ -150,21 +150,23 @@
                 <p class="status-message @(_uploadOk ? "ok" : "error")">@_uploadMessage</p>
             }
 
-            @if (_managingSensor.Files.Count > 0)
+            <p class="stat-label" style="margin: 1rem 0 0.5rem;">Attached files</p>
+            @if (_modalFiles.Count > 0)
             {
-                <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem;">
-                    @foreach (var file in _managingSensor.Files)
+                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                    @foreach (var file in _modalFiles)
                     {
                         <a href="@($"{Config.BaseUrl}/api/sensors/{_managingSensor.MacAddress}/files/{file.Id}/download")"
-                        target="_blank" class="mono" style="font-size: 0.8rem; color: var(--text-dim);">
-                            📄 @file.FileName
+                        target="_blank" class="mono"
+                        style="font-size: 0.8rem; color: var(--emerald); text-decoration: underline;">
+                            ⬇ @file.FileName
                         </a>
                     }
                 </div>
             }
             else
             {
-                <p class="empty-state" style="margin-top: 0.5rem; font-size: 0.8rem;">No files attached yet.</p>
+                <p class="empty-state" style="font-size: 0.8rem;">No files attached yet.</p>
             }
 
             <p class="stat-label" style="margin: 1rem 0 0.5rem;">Simulate telemetry</p>
@@ -260,7 +262,7 @@
     private string? _uploadMessage;
     private bool _uploadOk;
     private readonly Dictionary<string, (bool Ok, AnomalyCellDto? Cell, string? Error)> _rowResults = new();
-
+    private List<SensorFileDto> _modalFiles = new();
     protected override async Task OnInitializedAsync()
     {
         try
@@ -338,6 +340,7 @@
 
         await RefreshAll();
         _managingSensor = _sensors.FirstOrDefault(s => s.MacAddress == mac);
+        _modalFiles = await Api.GetSensorFilesAsync(mac) ?? new();
     }
 
     private async Task SimulateReading(string mac)
@@ -386,14 +389,21 @@
 
     private record ValidationResult(string path, bool isValid);
 
-    private void OpenManageModal(SensorDto sensor)
+    private async Task OpenManageModal(SensorDto sensor)
     {
         _managingSensor = sensor;
         _editLocation = sensor.Location;
         _editCategory = sensor.Category;
+        _uploadMessage = null;
+        _modalFiles = await Api.GetSensorFilesAsync(sensor.MacAddress) ?? new();
     }
 
-    private void CloseManageModal() => _managingSensor = null;
+    private void CloseManageModal()
+    {
+        _managingSensor = null;
+        _uploadMessage = null;
+        _modalFiles = new();
+    }
 
     private async Task SaveSensorEdit()
     {

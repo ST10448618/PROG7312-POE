@@ -40,6 +40,18 @@ public static class SensorEndpoints
             return Results.NoContent();
         });
 
+        group.MapGet("/{mac}/files", async (string mac, AppDbContext db) =>
+        {
+            var files = await db.SensorFiles
+                .AsNoTracking()
+                .Where(f => f.SensorProfile!.MacAddress == mac)
+                .OrderByDescending(f => f.Id)
+                .Select(f => new { f.Id, f.FileName })
+                .ToListAsync();
+
+            return Results.Ok(files);
+        });
+
         group.MapPost("/{mac}/upload", async (string mac, IFormFile file, AppDbContext db, IFileStorageService storage) =>
         {
             if (file is null || file.Length == 0)
