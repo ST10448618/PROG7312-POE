@@ -85,7 +85,14 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
     public Task<HttpResponseMessage> UndoLastCommandAsync() =>
         _http.PostAsync("api/commands/undo", null);
     public Task<List<string>?> GetActiveFaultsAsync() => _http.GetFromJsonAsync<List<string>>("api/commands/faults");
+
     public Task<List<SensorFileDto>?> GetSensorFilesAsync(string mac) =>
     _http.GetFromJsonAsync<List<SensorFileDto>>($"api/sensors/{mac}/files");
+    
+    public Task<InsightsSnapshotDto?> GetInsightsAsync() =>
+    _http.GetFromJsonAsync<InsightsSnapshotDto>("api/insights");
+
+    public Task<HttpResponseMessage> RecordSearchAsync(string text, string category, string state) =>
+    _http.PostAsJsonAsync("api/insights/search", new { text, category, state });
 }
 
