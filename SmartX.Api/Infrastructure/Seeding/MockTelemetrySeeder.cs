@@ -29,6 +29,10 @@ public class MockTelemetrySeeder : IHostedService
         db.Sensors.AddRange(demoSensors);
         await db.SaveChangesAsync(cancellationToken);
 
+        var registry = scope.ServiceProvider.GetRequiredService<LiveDeviceRegistry>();
+        foreach (var s in demoSensors)
+        registry.Register(s.MacAddress, s.Location, s.Category);
+
         var rnd = new Random();
         foreach (var sensor in demoSensors)
         {
