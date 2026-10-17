@@ -1,234 +1,251 @@
 @page "/dashboard"
-@using Microsoft.AspNetCore.SignalR.Client
 @using SmartX.Client.Models
 @using SmartX.Client.Services
-@using System.Linq
-@implements IAsyncDisposable
+@implements IDisposable
 @inject SensorApiClient Api
-@inject ApiConfig Config
+@inject TelemetryStore Store
 
-<div class="card-header">
-    <div>
+<div class="dash-page">
+
+    <div class="page-header">
         <div class="title-with-dot">
             <h1>Telemetry Overview</h1>
-            <span class="pulse-dot"><span class="ping"></span><span class="core"></span></span>
+            <span class="pulse-dot @ConnectionDotClass"><span class="ping"></span><span class="core"></span></span>
         </div>
-        <p class="page-subtitle">@DateTime.Now.ToString("HH:mm:ss") · live monitoring</p>
-    </div>
-    <button class="btn-secondary" @onclick="RefreshSummary">Refresh</button>
-</div>
-
-@if (_loadError is not null)
-{
-    <div class="alert-banner">@_loadError</div>
-}
-
-@if (_summary is not null)
-{
-    <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);">
-        <div class="stat-card"><p class="stat-label">Total Nodes</p><p class="stat-value">@_summary.TotalSensors</p></div>
-        <div class="stat-card"><p class="stat-label">Active Alerts</p><p class="stat-value rose">@_activeCritical.Count</p></div>
-        <div class="stat-card"><p class="stat-label">Online</p><p class="stat-value emerald">@_summary.OnlineSensors</p></div>
-    </div>
-}
-
-<div class="card" style="margin-bottom: 1.5rem;">
-    <div class="legend">
-        <span class="legend-item"><i class="swatch emerald"></i>Normal</span>
-        <span class="legend-item"><i class="swatch amber"></i>Warning</span>
-        <span class="legend-item"><i class="swatch rose"></i>Critical</span>
-        <span class="legend-item"><i class="swatch info"></i>Disconnected</span>
+        <p class="page-subtitle">Live status of every sensor · @Store.ConnectionState</p>
     </div>
 
-    @if (_rows.Count == 0)
-    {
-        <p class="empty-state">No telemetry yet — push a reading from Data Ingestion to see live scoring.</p>
-    }
-    else
-    {
-        @foreach (var sensorId in _rows)
-        {
-            <div class="heatmap-row">
-                <span class="row-label">@sensorId</span>
-                <span class="badge @CategoryBadge(CategoryFor(sensorId))" style="margin-right: 0.5rem;">@CategoryFor(sensorId)</span>
-                <div class="cell-track">
-                    @foreach (var cell in _cellsBySensor[sensorId])
-                    {
-                        <div class="heat-cell @CellColour(cell.Colour)" @onclick="() => SelectSensor(sensorId)"
-                            title="@($"{cell.Value:0.0} (score {cell.Score:0.00})")"></div>
-                    }
-                </div>
+    <div class="stat-grid">
+        <div class="stat-card">
+            <p class="stat-label">Total nodes</p>
+            <p class="stat-value">@Store.Devices.Count</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Online</p>
+            <p class="stat-value emerald">@OnlineCount</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Active alerts</p>
+            <p class="stat-value rose">@Store.ActiveCritical.Count</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Active faults</p>
+            <p class="stat-value">@Store.ActiveFaults.Count</p>
+        </div>
+    </div>
+
+    <section class="card">
+        <div class="card-header">
+            <div>
+                <h3>Active alerts</h3>
+                <span class="meta">Critical readings in the last 2 minutes</span>
             </div>
-        }
-    }
-</div>
-
-@if (_activeCritical.Count > 0)
-{
-    @foreach (var alert in _activeCritical)
-    {
-        <div class="alert-banner">
-            <span class="pulse-dot rose"><span class="ping pulse-slow"></span><span class="core"></span></span>
-            Critical anomaly on <span class="mono">&nbsp;@alert.SensorId&nbsp;</span> — score @alert.Score.ToString("0.00")
         </div>
-    }
-}
+
+        @{
+            var alerts = Store.ActiveCritical.Take(5).ToList();
+            var more = Store.ActiveCritical.Count - alerts.Count;
+        }
+        @if (alerts.Count == 0)
+        {
+            <p class="all-clear">✓ No critical alerts right now.</p>
+        }
+        else
+        {
+            <div class="alert-list">
+                @foreach (var a in alerts)
+                {
+                    <div class="alert-item">
+                        <div class="who">
+                            <span class="pulse-dot rose"><span class="ping pulse-slow"></span><span class="core"></span></span>
+                            <div>
+                                <p class="mac mono">@a.SensorId</p>
+                                <p class="when">score @a.Score.ToString("0.00") · @a.Timestamp.ToLocalTime().ToString("HH:mm:ss")</p>
+                            </div>
+                        </div>
+                        <button class="btn-secondary btn-sm" @onclick="() => SelectSensor(a.SensorId)">Inspect</button>
+                    </div>
+                }
+            </div>
+            @if (more > 0)
+            {
+                <p class="empty-state" style="margin-top: 0.6rem;">+@more more</p>
+            }
+        }
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <div>
+                <h3>Anomaly heat map</h3>
+                <span class="meta">Latest readings per sensor, scored against a rolling baseline. Click a cell to inspect.</span>
+            </div>
+            <div class="legend">
+                <span class="legend-item"><i class="swatch emerald"></i>Normal</span>
+                <span class="legend-item"><i class="swatch amber"></i>Warning</span>
+                <span class="legend-item"><i class="swatch rose"></i>Critical</span>
+                <span class="legend-item"><i class="swatch info"></i>Disconnected</span>
+            </div>
+        </div>
+
+        @if (Store.HeatRows.Count == 0)
+        {
+            <p class="empty-state">No telemetry yet. Readings appear here as sensors report in.</p>
+        }
+        else
+        {
+            @foreach (var sensorId in Store.HeatRows)
+            {
+                <div class="heatmap-row">
+                    <span class="row-label">@sensorId</span>
+                    <span class="badge @CategoryBadge(CategoryFor(sensorId))" style="margin-right: 0.5rem;">@CategoryFor(sensorId)</span>
+                    <div class="cell-track">
+                        @foreach (var cell in Store.HeatCells[sensorId])
+                        {
+                            <div class="heat-cell @CellColour(cell.Colour)" @onclick="() => SelectSensor(sensorId)"
+                                 title="@($"{cell.Value:0.0} · {StateLabel(cell.Colour)} · score {cell.Score:0.00}")"></div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </section>
+
+</div>
 
 @if (_selectedSensor is not null)
 {
     <div class="slideout">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <h3>@_selectedSensor</h3>
-            <button class="slideout-close" @onclick="() => _selectedSensor = null">✕</button>
+        <div class="slideout-head">
+            <div>
+                <h3 class="mono">@_selectedSensor</h3>
+                <span class="badge @CategoryBadge(CategoryFor(_selectedSensor))">@CategoryFor(_selectedSensor)</span>
+            </div>
+            <button class="slideout-close" @onclick="CloseSlideout">✕</button>
         </div>
-        <p style="font-size: 0.78rem; color: var(--text-dim); margin-bottom: 0.5rem;">Historical Context</p>
-        @if (_history is not null)
+
+        <div class="segmented slide-tabs">
+            <button class="@Tab("telemetry")" @onclick='() => _panelView = "telemetry"'>Real-time</button>
+            <button class="@Tab("network")" @onclick='() => _panelView = "network"'>Network</button>
+            <button class="@Tab("actions")" @onclick='() => _panelView = "actions"'>Actions</button>
+        </div>
+
+        @if (_panelView == "telemetry")
         {
-            <div class="mono" style="font-size: 0.78rem; max-height: 16rem; overflow-y: auto;">
-                @foreach (var row in _history)
+            var latest = LatestCell(_selectedSensor);
+            <div class="card slide-card">
+                @if (latest is null)
                 {
-                    <div>@row[0].ToString("0.0")</div>
+                    <p class="empty-state">No live readings yet for this sensor.</p>
+                }
+                else
+                {
+                    <p class="stat-label">Latest reading</p>
+                    <p class="stat-value">@(latest.Colour == "Blue" ? "—" : latest.Value.ToString("0.0"))</p>
+                    <p class="slide-sub">@StateLabel(latest.Colour) · score @latest.Score.ToString("0.00") · @latest.Timestamp.ToLocalTime().ToString("HH:mm:ss")</p>
                 }
             </div>
-        }
 
-        <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.5rem;">
-            <button class="btn-secondary" @onclick='() => _panelView = "telemetry"'>View Real-Time Telemetry</button>
-            <button class="btn-secondary" @onclick='() => _panelView = "network"'>View Network Context</button>
-            <button class="btn-secondary" @onclick='() => _panelView = "actions"'>Recommended Actions</button>
-        </div>
-
-        @if (_panelView == "telemetry" && _cellsBySensor.TryGetValue(_selectedSensor, out var liveCells) && liveCells.Count > 0)
-        {
-            var latest = liveCells[^1];
-            <div class="card" style="margin-top: 1rem;">
-                <p class="stat-label">Latest reading</p>
-                <p class="stat-value" style="color: var(--text);">@latest.Value.ToString("0.0")</p>
-                <p style="font-size: 0.8rem; color: var(--text-dim);">
-                    score @latest.Score.ToString("0.00") · @latest.Timestamp.ToLocalTime().ToString("HH:mm:ss")
-                </p>
-            </div>
-        }
-        else if (_panelView == "telemetry")
-        {
-            <p class="empty-state" style="margin-top: 1rem; color: var(--text-dim);">No live readings yet for this sensor.</p>
+            <p class="stat-label" style="margin: 1rem 0 0.5rem;">Recent readings</p>
+            @if (_history is { Length: > 0 })
+            {
+                <div class="history-scroll mono">
+                    @foreach (var r in _history.OrderByDescending(r => r[1]).Take(20))
+                    {
+                        <div class="history-row">
+                            <span>@DateTime.FromOADate(r[1]).ToLocalTime().ToString("HH:mm:ss")</span>
+                            <span>@r[0].ToString("0.0")</span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="empty-state">No history yet.</p>
+            }
         }
 
         @if (_panelView == "network")
         {
-            var sensor = _sensors.FirstOrDefault(s => s.MacAddress == _selectedSensor);
-            <div class="card" style="margin-top: 1rem;">
+            var device = Store.Devices.FirstOrDefault(d => d.MacAddress == _selectedSensor);
+            <div class="card slide-card">
                 <p class="stat-label">Deployment path</p>
-                <p style="font-size: 0.9rem; color: var(--text); font-weight: 500;">@(sensor?.Location ?? "Unknown")</p>
-                <p style="font-size: 0.8rem; color: var(--text-dim); margin-top: 0.4rem;">
-                    Category: @(sensor?.Category ?? "Unknown")
-                </p>
+                <p class="slide-main">@(device?.Location ?? "Unknown")</p>
+                <p class="slide-sub">Category: @(device?.Category ?? "Unknown")</p>
+                <p class="slide-sub">Status: @(device?.Status ?? "Unknown")</p>
+                @if (device is not null)
+                {
+                    <p class="slide-sub">Last seen: @device.LastSeen.ToLocalTime().ToString("HH:mm:ss")</p>
+                }
             </div>
         }
 
         @if (_panelView == "actions")
         {
-            var hasCritical = _activeCritical.Any(a => a.SensorId == _selectedSensor);
-            <div class="card" style="margin-top: 1rem;">
-                <p style="font-size: 0.9rem; color: @(hasCritical ? "var(--rose)" : "var(--emerald)"); font-weight: 500;">
-                    @(hasCritical
-                        ? "⚠ Investigate immediately — recent reading is a statistical outlier."
-                        : "✓ No action needed — readings are within normal range.")
-                </p>
+            var faulted = Store.ActiveFaults.Contains(_selectedSensor);
+            var critical = Store.ActiveCritical.Any(a => a.SensorId == _selectedSensor);
+            <div class="card slide-card">
+                @if (faulted)
+                {
+                    <p class="slide-main" style="color: var(--rose);">⚠ Device is disconnected. Check power and the mesh link before sending commands.</p>
+                }
+                else if (critical)
+                {
+                    <p class="slide-main" style="color: var(--rose);">⚠ Investigate immediately. A recent reading is a statistical outlier.</p>
+                }
+                else
+                {
+                    <p class="slide-main" style="color: var(--emerald);">✓ No action needed. Readings are within the normal range.</p>
+                }
+                <p class="slide-sub" style="margin-top: 0.75rem;"><a href="/command-stream" style="color: var(--emerald);">Open Command Stream →</a></p>
             </div>
         }
     </div>
 }
 
 @code {
-    private HubConnection? _hub;
-    private readonly List<string> _rows = new();
-    private readonly Dictionary<string, List<AnomalyCellDto>> _cellsBySensor = new();
-    private readonly List<AnomalyCellDto> _activeCritical = new();
-    private List<SensorDto> _sensors = new();
-    private SensorSummaryDto? _summary;
     private string? _selectedSensor;
-    private string? _panelView;
+    private string _panelView = "telemetry";
     private double[][]? _history;
-    private string? _loadError;
-    private const int MaxCellsPerRow = 30;
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            await RefreshSummary();
-            _sensors = await Api.GetSensorsAsync() ?? new();
-            await LoadRecentHistory();
-
-            _hub = new HubConnectionBuilder().WithUrl($"{Config.BaseUrl}/hubs/telemetry").WithAutomaticReconnect().Build();
-            _hub.On<AnomalyCellDto>("AnomalyUpdate", async cell =>
-            {
-                try
-                {
-                    if (!_cellsBySensor.ContainsKey(cell.SensorId)) { _cellsBySensor[cell.SensorId] = new(); _rows.Add(cell.SensorId); }
-                    var row = _cellsBySensor[cell.SensorId];
-                    row.Add(cell);
-                    if (row.Count > MaxCellsPerRow) row.RemoveAt(0);
-
-                    if (cell.Colour == "Red")
-                    {
-                        _activeCritical.RemoveAll(a => a.SensorId == cell.SensorId);
-                        _activeCritical.Insert(0, cell);
-                    }
-                    await InvokeAsync(StateHasChanged);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"AnomalyUpdate handler failed: {ex}");
-                }
-            });
-            await _hub.StartAsync();
-        }
-        catch (Exception ex)
-        {
-            _loadError = "Couldn't reach the API or live telemetry hub.";
-            Console.Error.WriteLine(ex);
-        }
+        Store.Changed += OnStoreChanged;
+        await Store.InitializeAsync();
     }
 
-    private async Task LoadRecentHistory()
-    {
-        var logs = await Api.GetAnomalyLogsAsync("All", "");
-        if (logs is null) return;
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
 
-        foreach (var log in logs.OrderBy(l => l.Timestamp))
-        {
-            var cell = new AnomalyCellDto
-            {
-                SensorId = log.SensorId,
-                Value = log.Value,
-                Score = log.Score,
-                Colour = log.Colour,
-                Timestamp = log.Timestamp
-            };
+    public void Dispose() => Store.Changed -= OnStoreChanged;
 
-            if (!_cellsBySensor.ContainsKey(cell.SensorId)) { _cellsBySensor[cell.SensorId] = new(); _rows.Add(cell.SensorId); }
-            var row = _cellsBySensor[cell.SensorId];
-            row.Add(cell);
-            if (row.Count > MaxCellsPerRow) row.RemoveAt(0);
-
-            if (cell.Colour == "Red")
-            {
-                _activeCritical.RemoveAll(a => a.SensorId == cell.SensorId);
-                _activeCritical.Insert(0, cell);
-            }
-        }
-    }
-
-    private async Task RefreshSummary() => _summary = await Api.GetSummaryAsync();
+    private int OnlineCount => Store.Devices.Count(d => d.Status != "Disconnected");
 
     private async Task SelectSensor(string sensorId)
     {
         _selectedSensor = sensorId;
-        _panelView = null;
-        _history = await Api.GetSensorHistoryAsync(sensorId);
+        _panelView = "telemetry";
+        _history = null;
+        try { _history = await Api.GetSensorHistoryAsync(sensorId); }
+        catch (Exception ex) { Console.Error.WriteLine(ex); }
     }
+
+    private void CloseSlideout() => _selectedSensor = null;
+
+    private string Tab(string view) => _panelView == view ? "active" : "";
+
+    private AnomalyCellDto? LatestCell(string mac) =>
+        Store.HeatCells.TryGetValue(mac, out var cells) && cells.Count > 0 ? cells[^1] : null;
+
+    private string CategoryFor(string mac) =>
+        Store.Devices.FirstOrDefault(d => d.MacAddress == mac)?.Category ?? "Unknown";
+
+    private static string CategoryBadge(string category) => category switch
+    {
+        "Environmental" => "badge-info",
+        "Power Consumption" => "badge-amber",
+        "Actuator" => "badge-emerald",
+        _ => "badge-slate"
+    };
 
     private static string CellColour(string colour) => colour.ToLowerInvariant() switch
     {
@@ -238,19 +255,18 @@
         _ => "emerald"
     };
 
-    private string CategoryFor(string mac) =>
-        _sensors.FirstOrDefault(s => s.MacAddress == mac)?.Category ?? "Unknown";
-
-    private static string CategoryBadge(string category) => category switch
+    private static string StateLabel(string colour) => colour switch
     {
-        "Environmental" => "badge-info",
-        "Power Consumption" => "badge-amber",
-        "Actuator" => "badge-emerald",
-        _ => "badge-slate"
+        "Red" => "Critical",
+        "Amber" => "Warning",
+        "Blue" => "Disconnected",
+        _ => "Normal"
     };
-    public async ValueTask DisposeAsync()
-{
-    try { if (_hub is not null) await _hub.DisposeAsync(); }
-    catch { /* connection may never have fully established; safe to ignore on teardown */ }
-}
+
+    private string ConnectionDotClass => Store.ConnectionState switch
+    {
+        "Connected" => "",
+        "Disconnected" => "rose",
+        _ => "amber"
+    };
 }

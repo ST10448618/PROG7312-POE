@@ -33,6 +33,10 @@ build_property.EnableCodeStyleSeverity =
 build_metadata.AdditionalFiles.TargetPath = QXBwLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/perez/VSCodeProjects/SmartX/SmartX.Client/Components/ReadingsChart.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xSZWFkaW5nc0NoYXJ0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/perez/VSCodeProjects/SmartX/SmartX.Client/Features/AnomalyHeatMap/AnomalyHeatMap.razor]
 build_metadata.AdditionalFiles.TargetPath = RmVhdHVyZXNcQW5vbWFseUhlYXRNYXBcQW5vbWFseUhlYXRNYXAucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 

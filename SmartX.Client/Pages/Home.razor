@@ -1,108 +1,125 @@
 ﻿@page "/"
+@using SmartX.Client.Components
 @using SmartX.Client.Models
 @using SmartX.Client.Services
+@implements IDisposable
 @inject SensorApiClient Api
+@inject TelemetryStore Store
 
-<div class="page-header">
-    <h1>Welcome to Smart-X Telemetry</h1>
-    <p class="page-subtitle">
-        @DateTime.Now.ToString("dddd, dd MMMM yyyy") ·
-        @(_health is null ? "loading system status…" : _health.DbConnected ? "All systems operational" : "Database unreachable")
-    </p>
-</div>
+<div class="home-page">
 
-@if (_loadError is not null)
-{
-    <div class="alert-banner">@_loadError</div>
-}
+    <div class="page-header">
+        <h1>Welcome to Smart-X Telemetry</h1>
+        <p class="page-subtitle">@DateTime.Now.ToString("dddd, dd MMMM yyyy") · @StatusText</p>
+    </div>
 
-@if (_summary is not null && _health is not null)
-{
+    @if (_loadError is not null)
+    {
+        <div class="alert-banner">@_loadError</div>
+    }
+
     <div class="stat-grid">
         <div class="stat-card">
-            <p class="stat-label">Total Nodes</p>
-            <p class="stat-value">@_summary.TotalSensors</p>
+            <p class="stat-label">Total nodes</p>
+            <p class="stat-value">@(_summary?.TotalSensors.ToString() ?? "—")</p>
         </div>
         <div class="stat-card">
-            <p class="stat-label">Active Alerts (24h)</p>
-            <p class="stat-value rose">@_health.CriticalAnomaliesLast24h</p>
+            <p class="stat-label">Active alerts (24h)</p>
+            <p class="stat-value rose">@(_health?.CriticalAnomaliesLast24h.ToString() ?? "—")</p>
         </div>
         <div class="stat-card">
             <div class="title-with-dot">
-                <p class="stat-label">System Uptime</p>
+                <p class="stat-label">System uptime</p>
                 <span class="pulse-dot"><span class="ping pulse-slow"></span><span class="core"></span></span>
             </div>
-            <p class="stat-value">@FormatUptime(_health.UptimeSeconds)</p>
+            <p class="stat-value">@(_health is null ? "—" : FormatUptime(_health.UptimeSeconds))</p>
         </div>
         <div class="stat-card">
-            <p class="stat-label">Telemetry Readings</p>
-            <p class="stat-value">@_summary.TotalTelemetryLogs</p>
+            <p class="stat-label">Telemetry readings</p>
+            <p class="stat-value">@(_summary?.TotalTelemetryLogs.ToString() ?? "—")</p>
         </div>
     </div>
-}
 
-<div class="pillar-grid">
-    <a href="/dashboard" class="pillar-card">
-        <h2>Overview Dashboard →</h2>
-        <p>Live anomaly heat map across all sensors.</p>
-    </a>
-    <a href="/command-stream" class="pillar-card">
-        <h2>Command Stream →</h2>
-        <p>Live command queue, priority alerts, and undo history.</p>
-    </a>
-    <a href="/ingestion" class="pillar-card">
-        <h2>Data Ingestion →</h2>
-        <p>Register devices and monitor the pipeline.</p>
-    </a>
-    <a href="/integrations" class="pillar-card">
-        <h2>Integration →</h2>
-        <p>Connect webhook notifications.</p>
-    </a>
-</div>
+    <div class="pillar-grid">
+        <a href="/dashboard" class="pillar-card">
+            <h2>Overview →</h2>
+            <p>Live anomaly heat map across all sensors.</p>
+        </a>
+        <a href="/command-stream" class="pillar-card">
+            <h2>Command Stream →</h2>
+            <p>Command queue, priority alerts, undo history and suggested actions.</p>
+        </a>
+        <a href="/ingestion" class="pillar-card">
+            <h2>Data Ingestion →</h2>
+            <p>Register devices and monitor the pipeline.</p>
+        </a>
+        <a href="/integrations" class="pillar-card">
+            <h2>Integration →</h2>
+            <p>Connect webhook notifications.</p>
+        </a>
+    </div>
 
-<div class="card">
-    <h3 style="margin-bottom: 1rem;">Recent Activity</h3>
-    @if (_recent is null || _recent.Count == 0)
-    {
-        <p class="empty-state">No telemetry yet.</p>
-    }
-    else
-    {
-        <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-            @for (var i = 0; i < _recent.Count; i++)
-            {
-                var item = _recent[i];
-                <div style="display: flex; justify-content: space-between; font-size: 0.875rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--line);">
-                    <span style="display: flex; align-items: center; gap: 0.5rem;">
-                        @if (i == 0)
-                        {
-                            <span class="pulse-dot"><span class="ping pulse-slow"></span><span class="core"></span></span>
-                        }
-                        <span class="mono">@item.SensorId</span>
-                        <span style="color: var(--text-dim);">
-                            sent @($"{item.RawValue}{item.Unit}")
-                        </span>
-                    </span>
-                    <span style="color: var(--text-faint);">@item.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
-                </div>
-            }
+    <section class="card">
+        <div class="card-header">
+            <div>
+                <h3>Sensor readings</h3>
+                <span class="meta">Peaks and drops across recent readings. Click a sensor to show or hide its line.</span>
+            </div>
+            <div class="segmented">
+                <button class="@(Store.ChartFullRange ? "" : "active")" @onclick="() => SetRange(false)">Focus 0–100</button>
+                <button class="@(Store.ChartFullRange ? "active" : "")" @onclick="() => SetRange(true)">Full range</button>
+            </div>
         </div>
-    }
+
+        @if (Store.HeatRows.Count > 0)
+        {
+            <div class="chip-row">
+                @foreach (var id in Store.HeatRows)
+                {
+                    var on = !Store.ChartHidden.Contains(id);
+                    <button class="chip @(on ? "on" : "")" @onclick="() => ToggleSensor(id)">
+                        <i class="chip-dot" style="background: @(ReadingsChart.ColourFor(Store.HeatRows.IndexOf(id)))"></i>
+                        <span class="mono">@id</span>
+                    </button>
+                }
+            </div>
+        }
+
+        <ReadingsChart Cells="Store.HeatCells" Order="VisibleRows" ColourOrder="Store.HeatRows" FullRange="Store.ChartFullRange" />
+
+        @{ var (high, low, plotted) = Extremes(); }
+        <div class="chart-facts">
+            <div><span class="fact-label">Highest reading</span><span class="fact-value mono">@FactText(high)</span></div>
+            <div><span class="fact-label">Lowest reading</span><span class="fact-value mono">@FactText(low)</span></div>
+            <div><span class="fact-label">Readings plotted</span><span class="fact-value mono">@plotted</span></div>
+        </div>
+    </section>
+
 </div>
 
 @code {
     private SensorSummaryDto? _summary;
     private SystemHealthDto? _health;
-    private List<TelemetryLogDto>? _recent;
     private string? _loadError;
+    private readonly CancellationTokenSource _cts = new();
 
     protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnStoreChanged;
+        await Store.InitializeAsync();
+        await LoadStatsAsync();
+        _ = PollAsync();
+    }
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task LoadStatsAsync()
     {
         try
         {
             _summary = await Api.GetSummaryAsync();
             _health = await Api.GetHealthSummaryAsync();
-            _recent = await Api.GetRecentTelemetryAsync();
+            _loadError = null;
         }
         catch (Exception ex)
         {
@@ -110,6 +127,60 @@
             Console.Error.WriteLine(ex);
         }
     }
+
+    private async Task PollAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_cts.Token))
+            {
+                await LoadStatsAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { }
+    }
+
+    public void Dispose()
+    {
+        Store.Changed -= OnStoreChanged;
+        _cts.Cancel();
+    }
+
+    private string StatusText => _health is null
+        ? "loading system status…"
+        : _health.DbConnected ? "All systems operational" : "Database unreachable";
+
+    private List<string> VisibleRows => Store.HeatRows.Where(r => !Store.ChartHidden.Contains(r)).ToList();
+
+    private void SetRange(bool full) => Store.ChartFullRange = full;
+
+    private void ToggleSensor(string id)
+    {
+        if (!Store.ChartHidden.Add(id)) Store.ChartHidden.Remove(id);
+    }
+
+    private (AnomalyCellDto? High, AnomalyCellDto? Low, int Count) Extremes()
+    {
+        AnomalyCellDto? high = null, low = null;
+        var count = 0;
+        foreach (var id in VisibleRows)
+        {
+            if (!Store.HeatCells.TryGetValue(id, out var cells)) continue;
+            foreach (var c in cells)
+            {
+                if (c.Colour == "Blue") continue; // disconnected readings carry no value
+                count++;
+                if (high is null || c.Value > high.Value) high = c;
+                if (low is null || c.Value < low.Value) low = c;
+            }
+        }
+        return (high, low, count);
+    }
+
+    private static string FactText(AnomalyCellDto? c) =>
+        c is null ? "—" : $"{c.Value:0.0} · {c.SensorId} · {c.Timestamp.ToLocalTime():HH:mm:ss}";
 
     private static string FormatUptime(double seconds)
     {
