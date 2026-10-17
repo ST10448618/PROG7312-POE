@@ -1,0 +1,205 @@
+@using System.Globalization
+@using System.Text
+@using SmartX.Client.Models
+
+@if (_plots.Count == 0)
+{
+    <p class="empty-state">No readings to plot yet. Lines appear here as telemetry arrives.</p>
+}
+else
+{
+    <div class="chart-wrap">
+        <svg viewBox="0 0 @W @H" class="chart-svg" role="img" aria-label="Sensor readings over time">
+            <rect x="@F(ML)" y="@F(_bandTop)" width="@F(PlotW)" height="@F(_bandHeight)" class="chart-band"></rect>
+
+            @foreach (var tick in _ticks)
+            {
+                <line x1="@F(ML)" y1="@F(tick.Y)" x2="@F(ML + PlotW)" y2="@F(tick.Y)" class="chart-grid"></line>
+            }
+
+            @foreach (var plot in _plots)
+            {
+                <path d="@plot.Path" fill="none" stroke="@plot.Colour" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></path>
+
+                foreach (var p in plot.Points)
+                {
+                    if (p.Clamped)
+                    {
+                        <polygon points="@p.Shape" fill="@p.Fill" class="chart-marker"><title>@p.Tip</title></polygon>
+                    }
+                    else if (p.Highlight)
+                    {
+                        <circle cx="@F(p.X)" cy="@F(p.Y)" r="4.5" fill="@p.Fill" class="chart-marker"><title>@p.Tip</title></circle>
+                    }
+                }
+
+                <circle cx="@F(plot.Last.X)" cy="@F(plot.Last.Y)" r="3" fill="@plot.Colour"></circle>
+            }
+        </svg>
+
+        @foreach (var tick in _ticks)
+        {
+            <span class="chart-ylabel" style="top: @F(tick.Y / H * 100)%; width: @F(ML * 100.0 / W)%;">@tick.Label</span>
+        }
+    </div>
+
+    <div class="chart-xaxis" style="padding-left: @F(ML * 100.0 / W)%; padding-right: @F(MR * 100.0 / W)%;">
+        <span>@_startLabel</span><span>@_midLabel</span><span>@_endLabel</span>
+    </div>
+
+    <div class="chart-legend">
+        <span class="legend-item"><i class="swatch band"></i>Expected 0–100</span>
+        <span class="legend-item"><i class="dot warn"></i>Warning</span>
+        <span class="legend-item"><i class="dot crit"></i>Critical</span>
+        @if (!FullRange)
+        {
+            <span class="legend-item">▲ ▼ reading is beyond the scale</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyDictionary<string, List<AnomalyCellDto>> Cells { get; set; } = new Dictionary<string, List<AnomalyCellDto>>();
+    [Parameter] public IReadOnlyList<string> Order { get; set; } = Array.Empty<string>();
+    /// <summary>Stable list of every sensor, so a line keeps its colour when others are hidden.</summary>
+    [Parameter] public IReadOnlyList<string> ColourOrder { get; set; } = Array.Empty<string>();
+    [Parameter] public bool FullRange { get; set; }
+
+    private const int W = 1000, H = 260, ML = 44, MR = 12, MT = 12, MB = 8;
+    private const double PlotW = W - ML - MR;
+    private const double PlotH = H - MT - MB;
+
+    // Deliberately no amber/rose: those colours are reserved for warning/critical markers.
+    private static readonly string[] Palette =
+        { "#60a5fa", "#a78bfa", "#2dd4bf", "#f0abfc", "#94a3b8", "#86efac", "#7dd3fc", "#c4b5fd" };
+
+    public static string ColourFor(int index) => Palette[Math.Abs(index) % Palette.Length];
+
+    private sealed class PlotPoint
+    {
+        public double X, Y;
+        public bool Clamped, Highlight;
+        public string Shape = "", Fill = "", Tip = "";
+    }
+
+    private sealed class PlotSeries
+    {
+        public string Id = "", Colour = "", Path = "";
+        public List<PlotPoint> Points = new();
+        public PlotPoint Last => Points[^1];
+    }
+
+    private sealed record Tick(double Y, string Label);
+
+    private readonly List<PlotSeries> _plots = new();
+    private readonly List<Tick> _ticks = new();
+    private double _bandTop, _bandHeight;
+    private string _startLabel = "", _midLabel = "", _endLabel = "";
+
+    protected override void OnParametersSet()
+    {
+        _plots.Clear();
+        _ticks.Clear();
+
+        var usable = new List<(int Index, string Id, List<AnomalyCellDto> Cells)>();
+        for (var i = 0; i < Order.Count; i++)
+        {
+            if (!Cells.TryGetValue(Order[i], out var found)) continue;
+            // Disconnected readings carry no value, so they are left out of the lines.
+            var list = found.Where(c => c.Colour != "Blue").OrderBy(c => c.Timestamp).ToList();
+            if (list.Count > 0) usable.Add((i, Order[i], list));
+        }
+        if (usable.Count == 0) return;
+
+        var all = usable.SelectMany(u => u.Cells).ToList();
+        var t0 = all.Min(c => c.Timestamp.ToUniversalTime().Ticks);
+        var t1 = all.Max(c => c.Timestamp.ToUniversalTime().Ticks);
+        var span = Math.Max(1, t1 - t0);
+
+        double lo, hi;
+        if (FullRange)
+        {
+            lo = Math.Min(all.Min(c => c.Value), 0);
+            hi = Math.Max(all.Max(c => c.Value), 100);
+            var pad = (hi - lo) * 0.06;
+            lo -= pad;
+            hi += pad;
+        }
+        else
+        {
+            lo = -50;
+            hi = 150;
+        }
+        var range = hi - lo;
+
+        double Y(double v) => MT + (hi - Math.Clamp(v, lo, hi)) / range * PlotH;
+        double X(DateTime t) => ML + (t.ToUniversalTime().Ticks - t0) / (double)span * PlotW;
+
+        foreach (var (index, id, cells) in usable)
+        {
+            var points = new List<PlotPoint>();
+            var path = new StringBuilder();
+
+            foreach (var c in cells)
+            {
+                var x = X(c.Timestamp);
+                var y = Y(c.Value);
+                var clamped = c.Value > hi || c.Value < lo;
+
+                points.Add(new PlotPoint
+                {
+                    X = x,
+                    Y = y,
+                    Clamped = clamped,
+                    Highlight = c.Colour is "Red" or "Amber",
+                    Fill = c.Colour switch { "Red" => "#fb7185", "Amber" => "#fbbf24", _ => "#a1a1aa" },
+                    Shape = clamped ? Triangle(x, y, c.Value > hi) : "",
+                    Tip = $"{id} · {StateLabel(c.Colour)} · {c.Value.ToString("0.0", CultureInfo.InvariantCulture)} · {c.Timestamp.ToLocalTime():HH:mm:ss}"
+                });
+
+                path.Append(path.Length == 0 ? 'M' : 'L').Append(F(x)).Append(',').Append(F(y)).Append(' ');
+            }
+
+            var colourIndex = -1;
+            for (var k = 0; k < ColourOrder.Count; k++)
+                if (ColourOrder[k] == id) { colourIndex = k; break; }
+            if (colourIndex < 0) colourIndex = index;
+
+            _plots.Add(new PlotSeries
+            {
+                Id = id,
+                Colour = ColourFor(colourIndex),
+                Path = path.ToString().TrimEnd(),
+                Points = points
+            });
+        }
+
+        for (var i = 0; i <= 4; i++)
+        {
+            var v = lo + range * i / 4;
+            _ticks.Add(new Tick(Y(v), v.ToString("0", CultureInfo.InvariantCulture)));
+        }
+
+        _bandTop = Y(Math.Min(100, hi));
+        _bandHeight = Math.Max(0, Y(Math.Max(0, lo)) - _bandTop);
+
+        static DateTime At(long ticks) => new DateTime(ticks, DateTimeKind.Utc).ToLocalTime();
+        _startLabel = At(t0).ToString("HH:mm:ss");
+        _midLabel = At(t0 + span / 2).ToString("HH:mm:ss");
+        _endLabel = At(t1).ToString("HH:mm:ss");
+    }
+
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string Triangle(double x, double y, bool up) =>
+        up ? $"{F(x)},{F(y - 6)} {F(x - 5)},{F(y + 3)} {F(x + 5)},{F(y + 3)}"
+           : $"{F(x)},{F(y + 6)} {F(x - 5)},{F(y - 3)} {F(x + 5)},{F(y - 3)}";
+
+    private static string StateLabel(string colour) => colour switch
+    {
+        "Red" => "Critical",
+        "Amber" => "Warning",
+        "Blue" => "Disconnected",
+        _ => "Normal"
+    };
+}
