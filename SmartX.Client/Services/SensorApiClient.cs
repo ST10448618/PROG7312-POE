@@ -25,8 +25,9 @@ public class SensorApiClient
     public Task<List<TelemetryLogDto>?> GetRecentTelemetryAsync() => _http.GetFromJsonAsync<List<TelemetryLogDto>>("api/telemetry/recent");
     public Task<double[][]?> GetSensorHistoryAsync(string sensorId) => _http.GetFromJsonAsync<double[][]>($"api/telemetry/history/{sensorId}");
 
-    public Task<List<AnomalyLogDto>?> GetAnomalyLogsAsync(string? severity, string? search) =>
-        _http.GetFromJsonAsync<List<AnomalyLogDto>>($"api/anomalies?severity={severity}&search={search}");
+public Task<List<AnomalyLogDto>?> GetAnomalyLogsAsync(string? severity, string? search, int pageSize = 25) =>
+    _http.GetFromJsonAsync<List<AnomalyLogDto>>(
+        $"api/anomalies?severity={Uri.EscapeDataString(severity ?? "")}&search={Uri.EscapeDataString(search ?? "")}&pageSize={pageSize}");
     public Task<HttpResponseMessage> AcknowledgeAnomalyAsync(int id) => _http.PostAsync($"api/anomalies/{id}/acknowledge", null);
 
     public Task<List<IntegrationDto>?> GetIntegrationsAsync() => _http.GetFromJsonAsync<List<IntegrationDto>>("api/integrations");
