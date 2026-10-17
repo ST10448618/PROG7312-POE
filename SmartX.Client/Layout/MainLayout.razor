@@ -1,21 +1,39 @@
-﻿@inherits LayoutComponentBase
+﻿@using SmartX.Client.Services
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject TelemetryStore Store
 
 <div class="shell">
     <header class="topbar">
         <div class="topbar-inner">
             <div class="brand">
                 <span>Smart-X Telemetry</span>
-                <span class="pulse-dot"><span class="ping"></span><span class="core"></span></span>
+                <span class="pulse-dot @ConnectionDot" title="@Store.ConnectionState"><span class="ping"></span><span class="core"></span></span>
             </div>
-                <nav class="nav-list">
-                    <NavLink href="" Match="NavLinkMatch.All" class="nav-tab">Home</NavLink>
-                    <NavLink href="dashboard" class="nav-tab">Overview</NavLink>
-                    <NavLink href="command-stream" class="nav-tab">Command Stream</NavLink>
-                    <NavLink href="anomalies" class="nav-tab">Anomaly Logs</NavLink>
-                    <NavLink href="ingestion" class="nav-tab">Data Ingestion</NavLink>
-                    <NavLink href="integrations" class="nav-tab">Integration</NavLink>
-                    <NavLink href="health" class="nav-tab">System Health</NavLink>
-                </nav>
+            <nav class="nav-list">
+                <NavLink href="" Match="NavLinkMatch.All" class="nav-tab">Home</NavLink>
+                <NavLink href="dashboard" class="nav-tab">
+                    <span>Overview</span>
+                    @if (Store.ActiveCritical.Count > 0)
+                    {
+                        <span class="nav-count">@Store.ActiveCritical.Count</span>
+                    }
+                </NavLink>
+                <NavLink href="command-stream" class="nav-tab">
+                    <span>Command Stream</span>
+                    @if (Store.ActiveFaults.Count > 0)
+                    {
+                        <span class="nav-count">@Store.ActiveFaults.Count</span>
+                    }
+                </NavLink>
+                <NavLink href="anomalies" class="nav-tab">Anomaly Logs</NavLink>
+                <NavLink href="ingestion" class="nav-tab">Data Ingestion</NavLink>
+                <NavLink href="integrations" class="nav-tab">Integration</NavLink>
+                <NavLink href="health" class="nav-tab">System Health</NavLink>
+                <span class="nav-tab disabled" title="Planned for the final PoE: graphs, traversal and minimum spanning tree">
+                    <span>Topology</span><span class="nav-soon">soon</span>
+                </span>
+            </nav>
         </div>
     </header>
 
@@ -36,5 +54,22 @@
 
 @code {
     private ErrorBoundary? _errorBoundary;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnStoreChanged;
+        await Store.InitializeAsync();
+    }
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
     private void Recover() => _errorBoundary?.Recover();
+
+    private string ConnectionDot => Store.ConnectionState switch
+    {
+        "Connected" => "",
+        "Disconnected" => "rose",
+        _ => "amber"
+    };
+
+    public void Dispose() => Store.Changed -= OnStoreChanged;
 }

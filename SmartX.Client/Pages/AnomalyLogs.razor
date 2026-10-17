@@ -2,22 +2,23 @@
 @using SmartX.Client.Models
 @using SmartX.Client.Services
 @inject SensorApiClient Api
+@inject TelemetryStore Store
 
 <div class="page-header">
     <h1>Anomaly Logs</h1>
+    <p class="page-subtitle">Every scored reading, newest first. Your filters are kept when you switch pages.</p>
 </div>
 
-<div style="display: flex; gap: 0.75rem; margin-bottom: 1rem;">
-    <input @bind="_search" @bind:event="oninput" placeholder="Search sensor ID…"
-           style="flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 0.55rem; border-radius: 6px;" />
-    <select @bind="_severity">
+<div class="toolbar">
+    <input class="field-input" placeholder="Search sensor ID, press Enter" @bind="_search" @bind:event="oninput" @onkeydown="OnKeyDown" />
+    <select class="field-select" @bind="_severity" @bind:after="Load">
         <option value="All">All severities</option>
         <option value="Critical">Critical</option>
         <option value="Warning">Warning</option>
         <option value="Disconnected">Disconnected</option>
         <option value="Normal">Normal</option>
     </select>
-    <button class="btn-secondary" @onclick="Load">Filter</button>
+    <button class="btn-secondary btn-sm" @onclick="Load">Filter</button>
 </div>
 
 <div class="card">
@@ -66,16 +67,31 @@
 
 @code {
     private List<AnomalyLogDto>? _logs;
-    private string _search = "";
-    private string _severity = "All";
     private string? _loadError;
+
+    // Filters live in the shared store so they survive navigation.
+    private string _search { get => Store.LogSearch; set => Store.LogSearch = value; }
+    private string _severity { get => Store.LogSeverity; set => Store.LogSeverity = value; }
 
     protected override async Task OnInitializedAsync() => await Load();
 
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Load();
+    }
+
     private async Task Load()
     {
-        try { _logs = await Api.GetAnomalyLogsAsync(_severity, _search); }
-        catch (Exception ex) { _loadError = "Couldn't load anomaly logs."; Console.Error.WriteLine(ex); }
+        try
+        {
+            _loadError = null;
+            _logs = await Api.GetAnomalyLogsAsync(_severity, _search);
+        }
+        catch (Exception ex)
+        {
+            _loadError = "Couldn't load anomaly logs.";
+            Console.Error.WriteLine(ex);
+        }
     }
 
     private async Task Acknowledge(int id)

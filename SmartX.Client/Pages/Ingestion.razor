@@ -1,9 +1,9 @@
 @page "/ingestion"
-@using Microsoft.AspNetCore.SignalR.Client
 @using SmartX.Client.Models
 @using SmartX.Client.Services
-@implements IAsyncDisposable
+@implements IDisposable
 @inject SensorApiClient Api
+@inject TelemetryStore Store
 @inject ApiConfig Config
 
 <div class="page-header">
@@ -104,7 +104,7 @@
                         <td class="mono">@s.MacAddress</td>
                         <td style="color: var(--text-dim);">@s.Location</td>
                         <td><span class="badge @CategoryBadge(s.Category)">@s.Category</span></td>
-                        <td><span class="badge badge-emerald">@s.Status</span></td>
+                        <td><span class="badge @StatusBadge(LiveStatus(s))">@LiveStatus(s)</span></td>
                         <td><button class="btn-secondary btn-sm" @onclick="() => OpenManageModal(s)">Manage</button></td>
                     </tr>
                 }
@@ -157,8 +157,8 @@
                     @foreach (var file in _modalFiles)
                     {
                         <a href="@($"{Config.BaseUrl}/api/sensors/{_managingSensor.MacAddress}/files/{file.Id}/download")"
-                        target="_blank" class="mono"
-                        style="font-size: 0.8rem; color: var(--emerald); text-decoration: underline;">
+                           target="_blank" class="mono"
+                           style="font-size: 0.8rem; color: var(--emerald); text-decoration: underline;">
                             ⬇ @file.FileName
                         </a>
                     }
@@ -176,7 +176,7 @@
                 <button class="btn-secondary btn-sm" @onclick="() => SimulateDrop(_managingSensor.MacAddress)">Drop</button>
                 <button class="btn-secondary btn-sm" @onclick="() => SimulateDisconnect(_managingSensor.MacAddress)">Disconnect</button>
             </div>
-          
+
             @if (_rowResults.TryGetValue(_managingSensor.MacAddress, out var row))
             {
                 @if (row.Ok)
@@ -240,59 +240,49 @@
 </div>
 
 @code {
-    private SensorDto _newSensor = new();
+    // Draft form, calculator inputs and live events live in the shared store.
+    private SensorDto _newSensor { get => Store.IngestionDraft; set => Store.IngestionDraft = value; }
+    private string _pathToValidate { get => Store.IngestionPath; set => Store.IngestionPath = value; }
+    private double _wattsA { get => Store.WattsA; set => Store.WattsA = value; }
+    private double _wattsB { get => Store.WattsB; set => Store.WattsB = value; }
+    private List<string> _liveEvents => Store.LiveEvents;
+
     private List<SensorDto> _sensors = new();
     private SensorSummaryDto? _summary;
     private SystemHealthDto? _health;
     private string _statusMessage = "";
     private bool _statusOk;
-    private string _pathToValidate = "";
     private bool? _pathResult;
     private readonly Random _rnd = new();
-    private readonly List<string> _liveEvents = new();
-    private HubConnection? _hub;
     private string? _loadError;
     private SensorDto? _managingSensor;
     private string _editLocation = "";
     private string _editCategory = "";
-    private double _wattsA = 120;
-    private double _wattsB = 80;
     private string? _aggregateResult;
     private bool _uploading;
     private string? _uploadMessage;
     private bool _uploadOk;
     private readonly Dictionary<string, (bool Ok, AnomalyCellDto? Cell, string? Error)> _rowResults = new();
     private List<SensorFileDto> _modalFiles = new();
+
     protected override async Task OnInitializedAsync()
     {
+        Store.Changed += OnStoreChanged;
         try
         {
+            await Store.InitializeAsync();
             await RefreshAll();
-            _hub = new HubConnectionBuilder()
-                .WithUrl($"{Config.BaseUrl}/hubs/telemetry")
-                .WithAutomaticReconnect()
-                .Build();
-            _hub.On<object>("TelemetryIngested", async evt =>
-            {
-                try
-                {
-                    _liveEvents.Insert(0, evt.ToString() ?? "");
-                    if (_liveEvents.Count > 15) _liveEvents.RemoveAt(_liveEvents.Count - 1);
-                    await InvokeAsync(StateHasChanged);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"TelemetryIngested handler failed: {ex}");
-                }
-            });
-            await _hub.StartAsync();
         }
         catch (Exception ex)
         {
-            _loadError = "Couldn't reach the API or live telemetry hub.";
+            _loadError = "Couldn't reach the API.";
             Console.Error.WriteLine(ex);
         }
     }
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Store.Changed -= OnStoreChanged;
 
     private async Task RefreshAll()
     {
@@ -308,6 +298,7 @@
         _statusMessage = _statusOk ? $"Registered {_newSensor.MacAddress}." : await response.Content.ReadAsStringAsync();
         if (_statusOk) _newSensor = new();
         await RefreshAll();
+        await Store.RefreshDevicesAsync();
     }
 
     private async Task UploadFile(InputFileChangeEventArgs e, string mac)
@@ -408,9 +399,10 @@
     private async Task SaveSensorEdit()
     {
         if (_managingSensor is null) return;
-        await Api.UpdateSensorAsync(_managingSensor.MacAddress, _editLocation, _editCategory);
         var mac = _managingSensor.MacAddress;
+        await Api.UpdateSensorAsync(mac, _editLocation, _editCategory);
         await RefreshAll();
+        await Store.RefreshDevicesAsync();
         _managingSensor = _sensors.FirstOrDefault(s => s.MacAddress == mac);
     }
 
@@ -420,7 +412,25 @@
         await Api.DeleteSensorAsync(_managingSensor.MacAddress);
         _managingSensor = null;
         await RefreshAll();
+        await Store.RefreshDevicesAsync();
     }
+
+    private async Task RunAggregateDemo()
+    {
+        var response = await Api.AggregatePowerAsync(_wattsA, _wattsB);
+        _aggregateResult = await response.Content.ReadAsStringAsync();
+    }
+
+    private string LiveStatus(SensorDto s) =>
+        Store.Devices.FirstOrDefault(d => d.MacAddress == s.MacAddress)?.Status ?? s.Status;
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Disconnected" => "badge-info",
+        "Critical" => "badge-rose",
+        "Warning" => "badge-amber",
+        _ => "badge-emerald"
+    };
 
     private static string ColourBadge(string colour) => colour.ToLowerInvariant() switch
     {
@@ -437,16 +447,4 @@
         "Actuator" => "badge-emerald",
         _ => "badge-slate"
     };
-
-    private async Task RunAggregateDemo()
-    {
-        var response = await Api.AggregatePowerAsync(_wattsA, _wattsB);
-        _aggregateResult = await response.Content.ReadAsStringAsync();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        try { if (_hub is not null) await _hub.DisposeAsync(); }
-        catch { /* connection may never have fully established; safe to ignore on teardown */ }
-    }
 }

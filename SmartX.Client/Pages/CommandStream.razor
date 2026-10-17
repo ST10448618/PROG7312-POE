@@ -1,336 +1,265 @@
 @page "/command-stream"
-@using Microsoft.AspNetCore.SignalR.Client
 @using SmartX.Client.Models
 @using SmartX.Client.Services
-@implements IAsyncDisposable
+@implements IDisposable
 @inject SensorApiClient Api
-@inject ApiConfig Config
+@inject TelemetryStore Store
 
-<div class="page-header">
-    <div class="title-with-dot">
-        <h1>Real-Time Command Stream &amp; History</h1>
-        <span class="pulse-dot @ConnectionDotClass"><span class="ping pulse-slow"></span><span class="core"></span></span>
-    </div>
-    <p class="page-subtitle">
-        Live command queue · priority alerts · undo history · @_connectionState
-    </p>
-</div>
+<div class="cs-page">
 
-@if (_loadError is not null)
-{
-    <div class="alert-banner">@_loadError</div>
-}
-
-<div class="command-grid">
-    <section class="card">
-        <h3 style="margin-bottom: 0.75rem;">Command Queue</h3>
-        <p class="stat-value">@(_queueDepths?.StandardDepth ?? 0)</p>
-        <p class="empty-state">Standard telemetry awaiting processing.</p>
-    </section>
-
-    <section class="card">
-        <h3 style="margin-bottom: 0.75rem;">Priority Alerts</h3>
-        <p class="stat-value rose">@(_queueDepths?.PriorityDepth ?? 0)</p>
-        <p class="empty-state">Critical/Warning readings bypassing the standard queue.</p>
-    </section>
-
-    <section class="card">
-        <h3 style="margin-bottom: 0.75rem;">Issue a command</h3>
-        <select @bind="_selectedTargetMac" style="margin-bottom: 0.5rem; width: 100%;">
-            <option value="">Select device…</option>
-            @foreach (var d in _devices)
-            {
-                <option value="@d.MacAddress">@d.MacAddress</option>
-            }
-        </select>
-        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-            <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("TriggerPump")'>Trigger Pump</button>
-            <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("ToggleRelay")'>Toggle Relay</button>
-            <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("ShutdownValve")'>Shutdown Valve</button>
+    <div class="page-header">
+        <div class="title-with-dot">
+            <h1>Real-Time Command Stream &amp; History</h1>
+            <span class="pulse-dot @ConnectionDotClass"><span class="ping pulse-slow"></span><span class="core"></span></span>
         </div>
-        @if (_commandMessage is not null)
-        {
-            <p class="status-message @(_commandOk ? "ok" : "error")">@_commandMessage</p>
-        }
-    </section>
+        <p class="page-subtitle">Live command queue · priority alerts · undo history · @_connectionState</p>
+    </div>
+
+    @if (_loadError is not null)
+    {
+        <div class="alert-banner">@_loadError</div>
+    }
+
+    <div class="command-grid">
+        <section class="card">
+            <h3>Command Queue</h3>
+            <p class="stat-value">@(_queueDepths?.StandardDepth ?? 0)</p>
+            <p class="empty-state">Standard telemetry awaiting processing.</p>
+        </section>
+
+        <section class="card">
+            <h3>Priority Alerts</h3>
+            <p class="stat-value rose">@(_queueDepths?.PriorityDepth ?? 0)</p>
+            <p class="empty-state">Critical and warning readings that bypass the standard queue.</p>
+        </section>
+
+        <section class="card">
+            <h3>Issue a command</h3>
+            <select @bind="_selectedTargetMac">
+                <option value="">Select device…</option>
+                @foreach (var d in _devices)
+                {
+                    <option value="@d.MacAddress">@d.MacAddress</option>
+                }
+            </select>
+            <div class="card-actions">
+                <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("TriggerPump")'>Trigger Pump</button>
+                <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("ToggleRelay")'>Toggle Relay</button>
+                <button class="btn-secondary btn-sm" @onclick='() => IssueCommand("ShutdownValve")'>Shutdown Valve</button>
+            </div>
+            @if (_commandMessage is not null)
+            {
+                <p class="status-message @(_commandOk ? "ok" : "error")">@_commandMessage</p>
+            }
+        </section>
+
+        <section class="card">
+            <h3>Command History</h3>
+            @if (_commandHistory.Count == 0)
+            {
+                <p class="empty-state">No commands issued yet.</p>
+            }
+            else
+            {
+                <div class="history-list">
+                    @foreach (var cmd in _commandHistory.Take(5))
+                    {
+                        <div class="history-item mono">@cmd.Type → @cmd.TargetMac · @cmd.IssuedAt.ToLocalTime().ToString("HH:mm:ss")</div>
+                    }
+                </div>
+            }
+            <div class="card-actions">
+                <button class="btn-secondary btn-sm" @onclick="UndoLastCommand" disabled="@(_commandHistory.Count == 0)">Undo last command</button>
+            </div>
+        </section>
+    </div>
+
+    <div class="insights-grid">
+        <section class="card">
+            <div class="card-header">
+                <h3>Suggested Actions</h3>
+                <span class="meta">learned from your command and search history</span>
+            </div>
+            @if (_insights.Suggestions.Count == 0)
+            {
+                <p class="empty-state">No active patterns. Suggestions appear while a recent alert matches your past responses.</p>
+            }
+            else
+            {
+                @foreach (var s in _insights.Suggestions)
+                {
+                    <div class="insight-row suggestion">
+                        <div class="insight-body">
+                            <p class="insight-title">@s.Title</p>
+                            <p class="insight-detail">@s.Detail</p>
+                            <div class="confidence-track"><div class="confidence-fill" style="width: @((int)(s.Confidence * 100))%"></div></div>
+                        </div>
+                        <div class="insight-actions">
+                            <button class="btn-secondary btn-sm" @onclick="() => RunSuggestion(s)">@(s.Kind == "Command" ? "Run" : "Apply filter")</button>
+                        </div>
+                    </div>
+                }
+            }
+        </section>
+
+        <section class="card">
+            <div class="card-header">
+                <h3>Automated Insights</h3>
+                <span class="meta">@_insights.Insights.Count issue(s) detected</span>
+            </div>
+            @if (_insights.Insights.Count == 0)
+            {
+                <p class="empty-state">All devices look healthy.</p>
+            }
+            else
+            {
+                @foreach (var i in _insights.Insights)
+                {
+                    <div class="insight-row @i.Severity.ToLowerInvariant()">
+                        <div class="insight-body">
+                            <p class="insight-title">@i.Title</p>
+                            <p class="insight-detail">@i.Detail</p>
+                        </div>
+                    </div>
+                }
+            }
+        </section>
+    </div>
 
     <section class="card">
-        <h3 style="margin-bottom: 0.75rem;">Command History</h3>
-        @if (_commandHistory.Count == 0)
+        <div class="card-header">
+            <h3>Active Faults</h3>
+            <span class="meta">@_activeFaults.Count unique fault(s)</span>
+        </div>
+        @if (_activeFaults.Count == 0)
         {
-            <p class="empty-state">No commands issued yet.</p>
+            <p class="empty-state">No active faults. All devices are reporting normally.</p>
         }
         else
         {
-            <div style="display: flex; flex-direction: column; gap: 0.3rem; max-height: 8rem; overflow-y: auto; margin-bottom: 0.5rem;">
-                @foreach (var cmd in _commandHistory.Take(5))
+            <div class="badge-row">
+                @foreach (var mac in _activeFaults)
                 {
-                    <div class="mono" style="font-size: 0.78rem; color: var(--text-dim);">
-                        @cmd.Type → @cmd.TargetMac (@cmd.IssuedAt.ToLocalTime().ToString("HH:mm:ss"))
+                    <span class="badge badge-info mono">@mac</span>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <h3>Historical Timeline</h3>
+            <button class="btn-secondary btn-sm" @onclick="RefreshTimeline">Refresh</button>
+        </div>
+        @if (_timelineBuckets.Count == 0)
+        {
+            <p class="empty-state">No timeline data yet.</p>
+        }
+        else
+        {
+            <div class="timeline-list">
+                @foreach (var bucket in _timelineBuckets)
+                {
+                    <div class="timeline-bucket">
+                        <p class="timeline-time mono">@bucket.Bucket.ToLocalTime().ToString("HH:mm:ss") · @bucket.Count reading(s)</p>
+                        @foreach (var reading in bucket.Sensors.Take(3))
+                        {
+                            <p class="timeline-reading mono">@reading.SensorId: @reading.RawValue@reading.Unit</p>
+                        }
                     </div>
                 }
             </div>
         }
-        <button class="btn-secondary btn-sm" @onclick="UndoLastCommand" disabled="@(_commandHistory.Count == 0)">
-            Undo last command
-        </button>
-    </section>
-</div>
-
-<div class="insights-grid">
-    <section class="card">
-        <div class="card-header">
-            <h3>Suggested Actions</h3>
-            <span style="font-size: 0.78rem; color: var(--text-dim);">learned from your command &amp; search history</span>
-        </div>
-        @if (_insights.Suggestions.Count == 0)
-        {
-            <p class="empty-state">No active patterns. Suggestions appear while a recent alert matches your past responses.</p>
-        }
-        else
-        {
-            @foreach (var s in _insights.Suggestions)
-            {
-                <div class="insight-row suggestion">
-                    <p class="insight-title">@s.Title</p>
-                    <p class="insight-detail">@s.Detail</p>
-                    <div class="confidence-track"><div class="confidence-fill" style="width: @((int)(s.Confidence * 100))%"></div></div>
-                    <button class="btn-secondary btn-sm" @onclick="() => RunSuggestion(s)">
-                        @(s.Kind == "Command" ? "Run" : "Apply filter")
-                    </button>
-                </div>
-            }
-        }
     </section>
 
     <section class="card">
+        @{ var shown = FilteredDevices.ToList(); }
         <div class="card-header">
-            <h3>Automated Insights</h3>
-            <span style="font-size: 0.78rem; color: var(--text-dim);">@_insights.Insights.Count issue(s) detected</span>
+            <h3>Live Device Registry</h3>
+            <span class="meta">showing @shown.Count of @_devices.Count device(s)</span>
         </div>
-        @if (_insights.Insights.Count == 0)
+
+        <div class="filter-bar">
+            <input placeholder="Search MAC or location"
+                   @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKeyDown" />
+            <select @bind="_filterCategory" @bind:after="OnFilterCommitted">
+                <option value="">All categories</option>
+                <option value="Environmental">Environmental</option>
+                <option value="Power Consumption">Power Consumption</option>
+                <option value="Actuator">Actuator</option>
+            </select>
+            <select @bind="_filterState" @bind:after="OnFilterCommitted">
+                <option value="">All states</option>
+                <option value="Online">Online</option>
+                <option value="Warning">Warning</option>
+                <option value="Critical">Critical</option>
+                <option value="Disconnected">Disconnected</option>
+                <option value="Faulted">Faulted</option>
+                <option value="OutOfRange">Out of range</option>
+            </select>
+            <button class="btn-secondary btn-sm" @onclick="ClearFilters">Clear</button>
+        </div>
+
+        @if (_loadingDevices)
         {
-            <p class="empty-state">All devices look healthy.</p>
+            <p class="empty-state">Loading device registry…</p>
+        }
+        else if (shown.Count == 0)
+        {
+            <p class="empty-state">No devices match the current filters.</p>
         }
         else
         {
-            @foreach (var i in _insights.Insights)
-            {
-                <div class="insight-row @i.Severity.ToLowerInvariant()">
-                    <p class="insight-title">@i.Title</p>
-                    <p class="insight-detail">@i.Detail</p>
-                </div>
-            }
-        }
-    </section>
-</div>
-
-<section class="card" style="margin-top: 1.5rem;">
-    <div class="card-header">
-        <h3>Active Faults</h3>
-        <span style="font-size: 0.8rem; color: var(--text-dim);">@_activeFaults.Count unique fault(s)</span>
-    </div>
-    @if (_activeFaults.Count == 0)
-    {
-        <p class="empty-state">No active faults — all devices reporting normally.</p>
-    }
-    else
-    {
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            @foreach (var mac in _activeFaults)
-            {
-                <span class="badge badge-info mono">@mac</span>
-            }
-        </div>
-    }
-</section>
-
-<section class="card" style="margin-top: 1.5rem;">
-    <div class="card-header">
-        <h3>Historical Timeline</h3>
-        <button class="btn-secondary btn-sm" @onclick="RefreshTimeline">Refresh</button>
-    </div>
-    @if (_timelineBuckets.Count == 0)
-    {
-        <p class="empty-state">No timeline data yet.</p>
-    }
-    else
-    {
-        <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 16rem; overflow-y: auto;">
-            @foreach (var bucket in _timelineBuckets)
-            {
-                <div style="border-left: 2px solid var(--line); padding-left: 0.75rem;">
-                    <p class="mono" style="font-size: 0.78rem; color: var(--text-dim);">
-                        @bucket.Bucket.ToLocalTime().ToString("HH:mm:ss") · @bucket.Count reading(s)
-                    </p>
-                    @foreach (var reading in bucket.Sensors.Take(3))
+            <table class="data-table">
+                <thead><tr><th>MAC</th><th>Category</th><th>Last Value</th><th>Status</th><th>Last Seen</th></tr></thead>
+                <tbody>
+                    @foreach (var d in shown)
                     {
-                        <p class="mono" style="font-size: 0.75rem; color: var(--text-faint); margin-left: 0.5rem;">
-                            @reading.SensorId: @reading.RawValue@reading.Unit
-                        </p>
+                        <tr>
+                            <td class="mono">@d.MacAddress</td>
+                            <td style="color: var(--text);">@d.Category</td>
+                            <td class="mono">@(d.LastValue?.ToString("0.0") ?? "—")</td>
+                            <td><span class="badge @StatusBadge(d.Status)">@d.Status</span></td>
+                            <td style="color: var(--text-faint); font-size: 0.8rem;">@d.LastSeen.ToLocalTime().ToString("HH:mm:ss")</td>
+                        </tr>
                     }
-                </div>
-            }
-        </div>
-    }
-</section>
+                </tbody>
+            </table>
+        }
+    </section>
 
-<section class="card" style="margin-top: 1.5rem;">
-    @{ var shown = FilteredDevices.ToList(); }
-    <div class="card-header">
-        <h3>Live Device Registry</h3>
-        <span style="font-size: 0.8rem; color: var(--text-dim);">showing @shown.Count of @_devices.Count device(s)</span>
-    </div>
-
-    <div class="filter-bar">
-        <input placeholder="Search MAC or location, press Enter…"
-               @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKeyDown" />
-        <select @bind="_filterCategory" @bind:after="OnFilterCommitted">
-            <option value="">All categories</option>
-            <option value="Environmental">Environmental</option>
-            <option value="Power Consumption">Power Consumption</option>
-            <option value="Actuator">Actuator</option>
-        </select>
-        <select @bind="_filterState" @bind:after="OnFilterCommitted">
-            <option value="">All states</option>
-            <option value="Online">Online</option>
-            <option value="Warning">Warning</option>
-            <option value="Critical">Critical</option>
-            <option value="Disconnected">Disconnected</option>
-            <option value="Faulted">Faulted</option>
-            <option value="OutOfRange">Out of range</option>
-        </select>
-        <button class="btn-secondary btn-sm" @onclick="ClearFilters">Clear</button>
-    </div>
-
-    @if (_loadingDevices)
-    {
-        <p class="empty-state">Loading device registry…</p>
-    }
-    else if (shown.Count == 0)
-    {
-        <p class="empty-state">No devices match the current filters.</p>
-    }
-    else
-    {
-        <table class="data-table">
-            <thead><tr><th>MAC</th><th>Category</th><th>Last Value</th><th>Status</th><th>Last Seen</th></tr></thead>
-            <tbody>
-                @foreach (var d in shown)
-                {
-                    <tr>
-                        <td class="mono">@d.MacAddress</td>
-                        <td style="color: var(--text);">@d.Category</td>
-                        <td class="mono">@(d.LastValue?.ToString("0.0") ?? "—")</td>
-                        <td><span class="badge @StatusBadge(d.Status)">@d.Status</span></td>
-                        <td style="color: var(--text-faint); font-size: 0.8rem;">@d.LastSeen.ToLocalTime().ToString("HH:mm:ss")</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
-</section>
+</div>
 
 @code {
-    private HubConnection? _hub;
-    private string _connectionState = "Connecting…";
-    private string? _loadError;
+    // Data and UI state live in the shared store, so nothing is lost on navigation.
+    private string _connectionState => Store.ConnectionState;
+    private bool _loadingDevices => Store.IsLoading;
+    private List<LiveDeviceStateDto> _devices => Store.Devices;
+    private QueueDepthDto? _queueDepths => Store.QueueDepths;
+    private List<DeviceCommandDto> _commandHistory => Store.CommandHistory;
+    private List<TimelineBucketDto> _timelineBuckets => Store.Timeline;
+    private List<string> _activeFaults => Store.ActiveFaults;
+    private InsightsSnapshotDto _insights => Store.Insights;
+    private string? _commandMessage => Store.CmdMessage;
+    private bool _commandOk => Store.CmdMessageOk;
+    private string? _loadError => Store.ConnectionState == "Disconnected"
+        ? "Can't reach the live telemetry hub. Retrying automatically…" : null;
 
-    private List<LiveDeviceStateDto> _devices = new();
-    private bool _loadingDevices = true;
-    private QueueDepthDto? _queueDepths;
-    private List<DeviceCommandDto> _commandHistory = new();
-    private List<TimelineBucketDto> _timelineBuckets = new();
-    private List<string> _activeFaults = new();
-    private InsightsSnapshotDto _insights = new();
-
-    private string _selectedTargetMac = "";
-    private string? _commandMessage;
-    private bool _commandOk;
-
-    private string _searchText = "";
-    private string _filterCategory = "";
-    private string _filterState = "";
+    private string _selectedTargetMac { get => Store.CmdSelectedTargetMac; set => Store.CmdSelectedTargetMac = value; }
+    private string _searchText { get => Store.CmdSearchText; set => Store.CmdSearchText = value; }
+    private string _filterCategory { get => Store.CmdFilterCategory; set => Store.CmdFilterCategory = value; }
+    private string _filterState { get => Store.CmdFilterState; set => Store.CmdFilterState = value; }
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            _devices = await Api.GetDeviceRegistryAsync() ?? new();
-            _loadingDevices = false;
-            _activeFaults = await Api.GetActiveFaultsAsync() ?? new();
-            _insights = await Api.GetInsightsAsync() ?? new();
-            await RefreshCommandData();
-            await RefreshTimeline();
-
-            _hub = new HubConnectionBuilder()
-                .WithUrl($"{Config.BaseUrl}/hubs/telemetry")
-                .WithAutomaticReconnect()
-                .Build();
-
-            _hub.Reconnecting += _ => { _connectionState = "Reconnecting…"; return InvokeAsync(StateHasChanged); };
-            _hub.Reconnected += _ => { _connectionState = "Connected"; return InvokeAsync(StateHasChanged); };
-            _hub.Closed += _ => { _connectionState = "Disconnected"; return InvokeAsync(StateHasChanged); };
-
-            _hub.On<object>("QueueDepthChanged", async _ =>
-            {
-                try
-                {
-                    _queueDepths = await Api.GetQueueDepthsAsync();
-                    await InvokeAsync(StateHasChanged);
-                }
-                catch (Exception ex) { Console.Error.WriteLine($"QueueDepthChanged handler failed: {ex}"); }
-            });
-
-            _hub.On<DeviceCommandDto>("CommandIssued", async _ =>
-            {
-                try
-                {
-                    _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
-                    await InvokeAsync(StateHasChanged);
-                }
-                catch (Exception ex) { Console.Error.WriteLine($"CommandIssued handler failed: {ex}"); }
-            });
-
-            _hub.On<DeviceCommandDto>("CommandUndone", async _ =>
-            {
-                try
-                {
-                    _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
-                    await InvokeAsync(StateHasChanged);
-                }
-                catch (Exception ex) { Console.Error.WriteLine($"CommandUndone handler failed: {ex}"); }
-            });
-
-            _hub.On<List<string>>("FaultSetChanged", async faults =>
-            {
-                _activeFaults = faults;
-                await InvokeAsync(StateHasChanged);
-            });
-
-            _hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", async devices =>
-            {
-                _devices = devices;
-                await InvokeAsync(StateHasChanged);
-            });
-
-            _hub.On<InsightsSnapshotDto>("InsightsUpdated", async snapshot =>
-            {
-                _insights = snapshot;
-                await InvokeAsync(StateHasChanged);
-            });
-
-            await _hub.StartAsync();
-            _connectionState = "Connected";
-        }
-        catch (Exception ex)
-        {
-            _loadingDevices = false;
-            _connectionState = "Disconnected";
-            _loadError = "Couldn't reach the API or live telemetry hub.";
-            Console.Error.WriteLine(ex);
-        }
+        Store.Changed += OnStoreChanged;
+        await Store.InitializeAsync();
+        await Store.RefreshTimelineAsync();
     }
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Store.Changed -= OnStoreChanged;
 
     // ---------- search / filter ----------
 
@@ -360,7 +289,6 @@
         if (e.Key == "Enter") await OnFilterCommitted();
     }
 
-    /// <summary>Records the committed search so the predictive engine can learn from it.</summary>
     private async Task OnFilterCommitted()
     {
         if (string.IsNullOrWhiteSpace(_searchText) && _filterCategory == "" && _filterState == "") return;
@@ -383,9 +311,9 @@
         {
             _selectedTargetMac = s.TargetMac;
             var response = await Api.IssueCommandAsync(s.TargetMac, s.CommandType);
-            _commandOk = response.IsSuccessStatusCode;
-            _commandMessage = _commandOk ? $"{s.Title} executed." : await response.Content.ReadAsStringAsync();
-            await RefreshCommandData();
+            Store.CmdMessageOk = response.IsSuccessStatusCode;
+            Store.CmdMessage = Store.CmdMessageOk ? $"{s.Title} executed." : await response.Content.ReadAsStringAsync();
+            await Store.RefreshCommandDataAsync();
         }
         else if (s.Kind == "Search")
         {
@@ -402,40 +330,34 @@
     {
         if (string.IsNullOrEmpty(_selectedTargetMac))
         {
-            _commandMessage = "Select a device first.";
-            _commandOk = false;
+            Store.CmdMessage = "Select a device first.";
+            Store.CmdMessageOk = false;
             return;
         }
 
         var response = await Api.IssueCommandAsync(_selectedTargetMac, type);
-        _commandOk = response.IsSuccessStatusCode;
-        _commandMessage = _commandOk ? $"{type} sent to {_selectedTargetMac}." : await response.Content.ReadAsStringAsync();
-        await RefreshCommandData();
+        Store.CmdMessageOk = response.IsSuccessStatusCode;
+        Store.CmdMessage = Store.CmdMessageOk ? $"{type} sent to {_selectedTargetMac}." : await response.Content.ReadAsStringAsync();
+        await Store.RefreshCommandDataAsync();
     }
 
     private async Task UndoLastCommand()
     {
         var response = await Api.UndoLastCommandAsync();
-        _commandMessage = response.IsSuccessStatusCode ? "Last command undone." : "Nothing to undo.";
-        _commandOk = response.IsSuccessStatusCode;
-        await RefreshCommandData();
+        Store.CmdMessageOk = response.IsSuccessStatusCode;
+        Store.CmdMessage = Store.CmdMessageOk ? "Last command undone." : "Nothing to undo.";
+        await Store.RefreshCommandDataAsync();
     }
 
-    private async Task RefreshCommandData()
-    {
-        _queueDepths = await Api.GetQueueDepthsAsync();
-        _commandHistory = await Api.GetCommandHistoryAsync() ?? new();
-    }
-
-    private async Task RefreshTimeline() => _timelineBuckets = await Api.GetTimelineAsync() ?? new();
+    private async Task RefreshTimeline() => await Store.RefreshTimelineAsync();
 
     // ---------- helpers ----------
 
     private string ConnectionDotClass => _connectionState switch
     {
         "Connected" => "",
-        "Reconnecting…" => "amber",
-        _ => "rose"
+        "Disconnected" => "rose",
+        _ => "amber"
     };
 
     private static string StatusBadge(string status) => status switch
@@ -445,10 +367,4 @@
         "Warning" => "badge-amber",
         _ => "badge-emerald"
     };
-
-    public async ValueTask DisposeAsync()
-    {
-        try { if (_hub is not null) await _hub.DisposeAsync(); }
-        catch { /* connection may never have fully established; safe to ignore on teardown */ }
-    }
 }
