@@ -90,8 +90,8 @@ public class TelemetryIngestionService
         else
             _commandStream.EnqueueStandard(packet.SensorId);
 
-        if (severity == "Normal" && _faultTracker.ClearFault(packet.SensorId))
-            await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
+        if (_faultTracker.ClearFault(packet.SensorId))
+        await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
 
         await _hub.Clients.All.SendAsync("QueueDepthChanged", new
         {
@@ -112,7 +112,10 @@ public class TelemetryIngestionService
     public async Task<AnomalyResult> MarkDisconnectedAsync(string sensorId)
     {
         var result = _anomaly.Score(sensorId, 0, sensorConnected: false);
-        var severity = AnomalyDetectionService.SeverityFor(result.Colour);
+
+
+        if (!_faultTracker.MarkFaulted(sensorId))
+            return result;
 
         _db.AnomalyLogs.Add(new AnomalyLog
         {
@@ -120,17 +123,13 @@ public class TelemetryIngestionService
             Value = 0,
             Score = 0,
             Colour = result.Colour.ToString(),
-            Severity = severity,
+            Severity = AnomalyDetectionService.SeverityFor(result.Colour),
             Timestamp = result.Timestamp
         });
         await _db.SaveChangesAsync();
 
         _engine.RecordAlert(sensorId, "Disconnected");
         _registry.UpdateReading(sensorId, 0, "Disconnected");
-
-        var isNewFault = _faultTracker.MarkFaulted(sensorId);
-        if (isNewFault)
-            Console.WriteLine($"New fault registered for {sensorId}");
 
         await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
         await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
