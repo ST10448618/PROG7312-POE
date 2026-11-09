@@ -5,6 +5,7 @@ using SmartX.Api.Domain.Entities;
 using SmartX.Api.Domain.ValueObjects;
 using SmartX.Api.Hubs;
 using SmartX.Api.Infrastructure.Data;
+using SmartX.Api.Domain.Models;
 
 namespace SmartX.Api.Services;
 
@@ -83,12 +84,11 @@ public class TelemetryIngestionService
         };
         _registry.UpdateReading(packet.SensorId, packet.NumericValue, deviceStatus, sensor?.Location, sensor?.Category);
 
-        if (severity == "Critical")
-            _commandStream.EnqueuePriority(packet.SensorId, priority: 0);
-        else if (severity == "Warning")
-            _commandStream.EnqueuePriority(packet.SensorId, priority: 1);
+        var queued = new QueuedReading(packet.SensorId, packet.NumericValue, severity, DateTime.UtcNow);
+        if (severity is "Critical" or "Warning")
+            _commandStream.EnqueuePriority(queued);
         else
-            _commandStream.EnqueueStandard(packet.SensorId);
+            _commandStream.EnqueueStandard(queued);
 
         if (_faultTracker.ClearFault(packet.SensorId))
         await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
@@ -129,7 +129,7 @@ public class TelemetryIngestionService
         await _db.SaveChangesAsync();
 
         _engine.RecordAlert(sensorId, "Disconnected");
-        _registry.UpdateReading(sensorId, 0, "Disconnected");
+        _commandStream.EnqueuePriority(new QueuedReading(sensorId, 0, "Disconnected", DateTime.UtcNow));
 
         await _hub.Clients.All.SendAsync("AnomalyUpdate", result);
         await _hub.Clients.All.SendAsync("DeviceRegistryUpdated", _registry.GetAll());
