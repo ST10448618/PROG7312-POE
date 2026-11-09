@@ -10,5 +10,8 @@ public class DeviceCommand
     public DateTime IssuedAt { get; init; } = DateTime.UtcNow;
     public bool IsPriority { get; init; }
 
+    public ActuatorState Before { get; init; }
+    public ActuatorState After { get; init; }
+
     public override string ToString() => $"{Type} → {TargetMac} ({IssuedAt:HH:mm:ss})";
 }

@@ -8,4 +8,5 @@ public class LiveDeviceState
     public string Status { get; set; } = "Online";
     public double? LastValue { get; set; }
     public DateTime LastSeen { get; set; } = DateTime.UtcNow;
+    public ActuatorState Actuators { get; set; } = ActuatorState.Default;
 }
