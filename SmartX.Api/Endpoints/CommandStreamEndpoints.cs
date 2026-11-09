@@ -15,8 +15,13 @@ public static class CommandStreamEndpoints
         group.MapGet("/queues", (CommandStreamService cmds) => Results.Ok(new
         {
             standardDepth = cmds.StandardQueueDepth,
-            priorityDepth = cmds.PriorityQueueDepth
+            priorityDepth = cmds.PriorityQueueDepth,
+            processedStandard = cmds.ProcessedStandardTotal,
+            processedPriority = cmds.ProcessedPriorityTotal
         }));
+
+        group.MapGet("/processed", (CommandStreamService cmds, int? take) =>
+            Results.Ok(cmds.GetProcessedLog(Math.Clamp(take ?? 20, 1, 50))));
 
         group.MapGet("/history", (CommandStreamService cmds) => Results.Ok(cmds.GetHistorySnapshot()));
 
