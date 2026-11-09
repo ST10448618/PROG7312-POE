@@ -123,4 +123,32 @@ public class CommandStreamService
     {
         lock (_lock) return _commandHistory.ToList(); // most recent first, matches Stack enumeration order
     }
+
+        public DeviceCommand IssueCommand(LiveDeviceRegistry registry, string targetMac, CommandType type)
+    {
+        lock (_lock)
+        {
+            var (before, after) = registry.ApplyCommand(targetMac, type); // throws if the device is unknown
+            var command = new DeviceCommand
+            {
+                TargetMac = targetMac,
+                Type = type,
+                IsPriority = true,
+                Before = before,
+                After = after
+            };
+            _commandHistory.Push(command);
+            return command;
+        }
+    }
+
+    public DeviceCommand? UndoLastCommand(LiveDeviceRegistry registry)
+    {
+        lock (_lock)
+        {
+            if (!_commandHistory.TryPop(out var command)) return null;
+            registry.RestoreActuators(command.TargetMac, command.Before);
+            return command;
+        }
+    }
 }

@@ -35,27 +35,28 @@ public static class CommandStreamEndpoints
 
         group.MapGet("/faults", (ActiveFaultTracker faults) => Results.Ok(faults.GetAllFaulted()));
 
-        group.MapPost("/issue", async (IssueCommandRequest req, CommandStreamService cmds,
+        group.MapPost("/issue", async (IssueCommandRequest req, CommandStreamService cmds, LiveDeviceRegistry registry,
             PredictiveActionEngine engine, IHubContext<TelemetryHub> hub) =>
         {
-            if (!Enum.TryParse<CommandType>(req.CommandType, out var type))
+            if (!Enum.TryParse<CommandType>(req.CommandType, out var type) || !Enum.IsDefined(type))
                 throw new ArgumentException($"Unknown command type '{req.CommandType}'.");
 
-            var command = new DeviceCommand { TargetMac = req.TargetMac, Type = type, IsPriority = true };
-            cmds.PushCommand(command);
+            var command = cmds.IssueCommand(registry, req.TargetMac, type); // 404 if the device is unknown
             engine.RecordUserAction($"Command:{type}:{req.TargetMac}");
 
             await hub.Clients.All.SendAsync("CommandIssued", command);
+            await hub.Clients.All.SendAsync("DeviceRegistryUpdated", registry.GetAll());
             await hub.Clients.All.SendAsync("InsightsUpdated", engine.Snapshot());
             return Results.Ok(command);
         });
 
-        group.MapPost("/undo", async (CommandStreamService cmds, IHubContext<TelemetryHub> hub) =>
+        group.MapPost("/undo", async (CommandStreamService cmds, LiveDeviceRegistry registry, IHubContext<TelemetryHub> hub) =>
         {
-            var undone = cmds.PopLastCommand();
+            var undone = cmds.UndoLastCommand(registry);
             if (undone is null) return Results.NotFound(new { message = "No commands to undo." });
 
             await hub.Clients.All.SendAsync("CommandUndone", undone);
+            await hub.Clients.All.SendAsync("DeviceRegistryUpdated", registry.GetAll());
             return Results.Ok(undone);
         });
     }
