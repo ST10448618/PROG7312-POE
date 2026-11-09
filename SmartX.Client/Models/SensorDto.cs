@@ -74,5 +74,6 @@ public class LiveDeviceStateDto
     public string Status { get; set; } = "Online";
     public double? LastValue { get; set; }
     public DateTime LastSeen { get; set; }
+    public ActuatorStateDto Actuators { get; set; } = new();
 }
 

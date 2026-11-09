@@ -20,6 +20,7 @@ public class TelemetryStore : IAsyncDisposable
 {
     private const int MaxHeatCells = 30;
     private const int MaxLiveEvents = 15;
+    private const int MaxProcessedLog = 20;
     private const int SnapshotLogCount = 200;
     private static readonly TimeSpan ActiveCriticalWindow = TimeSpan.FromMinutes(2);
 
@@ -49,6 +50,7 @@ public class TelemetryStore : IAsyncDisposable
     public List<LiveDeviceStateDto> Devices { get; private set; } = new();
     public QueueDepthDto? QueueDepths { get; private set; }
     public List<DeviceCommandDto> CommandHistory { get; private set; } = new();
+    public List<ProcessedReadingDto> ProcessedLog { get; private set; } = new();
     public List<string> ActiveFaults { get; private set; } = new();
     public InsightsSnapshotDto Insights { get; private set; } = new();
     public List<TimelineBucketDto> Timeline { get; private set; } = new();
@@ -125,6 +127,9 @@ public class TelemetryStore : IAsyncDisposable
 
         var timeline = await Try<List<TimelineBucketDto>>(() => _api.GetTimelineAsync());
         if (timeline is not null) Timeline = timeline;
+        
+        var processed = await Try<List<ProcessedReadingDto>>(() => _api.GetProcessedLogAsync());
+        if (processed is not null) ProcessedLog = processed;
 
         var logs = await Try<List<AnomalyLogDto>>(() => _api.GetAnomalyLogsAsync("All", "", SnapshotLogCount));
         if (logs is not null)
@@ -238,6 +243,13 @@ public class TelemetryStore : IAsyncDisposable
         hub.On<QueueDepthEventDto>("QueueDepthChanged", q =>
         {
             QueueDepths = new QueueDepthDto { StandardDepth = q.Standard, PriorityDepth = q.Priority };
+            Notify();
+        });
+
+        hub.On<ProcessedReadingDto>("ItemProcessed", item =>
+        {
+            ProcessedLog.Insert(0, item);
+            if (ProcessedLog.Count > MaxProcessedLog) ProcessedLog.RemoveAt(ProcessedLog.Count - 1);
             Notify();
         });
 

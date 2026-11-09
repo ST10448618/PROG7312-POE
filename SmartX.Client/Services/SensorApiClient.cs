@@ -80,6 +80,9 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
     public Task<QueueDepthDto?> GetQueueDepthsAsync() => _http.GetFromJsonAsync<QueueDepthDto>("api/commands/queues");
     public Task<List<DeviceCommandDto>?> GetCommandHistoryAsync() => _http.GetFromJsonAsync<List<DeviceCommandDto>>("api/commands/history");
 
+    public Task<List<ProcessedReadingDto>?> GetProcessedLogAsync() =>
+        _http.GetFromJsonAsync<List<ProcessedReadingDto>>("api/commands/processed?take=20");
+
     public Task<HttpResponseMessage> IssueCommandAsync(string targetMac, string commandType) =>
         _http.PostAsJsonAsync("api/commands/issue", new { targetMac, commandType });
 
