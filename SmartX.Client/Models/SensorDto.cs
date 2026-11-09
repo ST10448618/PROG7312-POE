@@ -64,6 +64,10 @@ public class SensorFileDto
 {
     public int Id { get; set; }
     public string FileName { get; set; } = "";
+    public string Category { get; set; } = "Other";
+    public string ContentType { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public DateTime UploadedAt { get; set; }
 }
 
 public class LiveDeviceStateDto

@@ -139,7 +139,16 @@
             <hr style="border: none; border-top: 1px solid var(--line); margin: 1rem 0;" />
 
             <p class="stat-label" style="margin-bottom: 0.5rem;">Attach file</p>
-            <InputFile OnChange="e => UploadFile(e, _managingSensor.MacAddress)" disabled="@_uploading" />
+                        <div class="form-field">
+                <label>File type</label>
+                <select @bind="_uploadCategory">
+                    <option value="">Auto-detect from extension</option>
+                    <option value="Config">Config</option>
+                    <option value="Photo">Photo</option>
+                    <option value="Log">Log</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
 
             @if (_uploading)
             {
@@ -150,23 +159,37 @@
                 <p class="status-message @(_uploadOk ? "ok" : "error")">@_uploadMessage</p>
             }
 
-            <p class="stat-label" style="margin: 1rem 0 0.5rem;">Attached files</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin: 1rem 0 0.5rem;">
+                <p class="stat-label" style="margin: 0;">Attached files (@_modalFiles.Count)</p>
+                <select @bind="_fileFilter" @bind:after="ReloadFiles" style="width: auto;">
+                    <option value="">All types</option>
+                    <option value="Config">Config</option>
+                    <option value="Photo">Photo</option>
+                    <option value="Log">Log</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+
             @if (_modalFiles.Count > 0)
             {
                 <div style="display: flex; flex-direction: column; gap: 0.4rem;">
                     @foreach (var file in _modalFiles)
                     {
-                        <a href="@($"{Config.BaseUrl}/api/sensors/{_managingSensor.MacAddress}/files/{file.Id}/download")"
-                           target="_blank" class="mono"
-                           style="font-size: 0.8rem; color: var(--emerald); text-decoration: underline;">
-                            ⬇ @file.FileName
-                        </a>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span class="badge @FileBadge(file.Category)">@FileCategoryLabel(file)</span>
+                            <a href="@($"{Config.BaseUrl}/api/sensors/{_managingSensor.MacAddress}/files/{file.Id}/download")"
+                               target="_blank" class="mono"
+                               style="font-size: 0.8rem; color: var(--emerald); text-decoration: underline;">
+                                ⬇ @file.FileName
+                            </a>
+                            <span style="color: var(--text-faint); font-size: 0.75rem;">@FormatSize(file.SizeBytes)</span>
+                        </div>
                     }
                 </div>
             }
             else
             {
-                <p class="empty-state" style="font-size: 0.8rem;">No files attached yet.</p>
+                <p class="empty-state" style="font-size: 0.8rem;">@(_fileFilter == "" ? "No files attached yet." : $"No {_fileFilter} files attached.")</p>
             }
 
             <p class="stat-label" style="margin: 1rem 0 0.5rem;">Simulate telemetry</p>
@@ -262,6 +285,8 @@
     private bool _uploading;
     private string? _uploadMessage;
     private bool _uploadOk;
+    private string _uploadCategory = "";
+    private string _fileFilter = "";
     private readonly Dictionary<string, (bool Ok, AnomalyCellDto? Cell, string? Error)> _rowResults = new();
     private List<SensorFileDto> _modalFiles = new();
 
@@ -379,6 +404,28 @@
     }
 
     private record ValidationResult(string path, bool isValid);
+
+        private async Task ReloadFiles()
+    {
+        if (_managingSensor is null) return;
+        _modalFiles = await Api.GetSensorFilesAsync(_managingSensor.MacAddress, _fileFilter) ?? new();
+    }
+
+    private static string FileCategoryLabel(SensorFileDto f) => string.IsNullOrEmpty(f.Category) ? "Other" : f.Category;
+
+    private static string FileBadge(string category) => category switch
+    {
+        "Photo" => "badge-amber",
+        "Log" => "badge-emerald",
+        _ => "badge-info"
+    };
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / (1024.0 * 1024):0.#} MB"
+    };
 
     private async Task OpenManageModal(SensorDto sensor)
     {

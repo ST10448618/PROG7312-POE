@@ -11,7 +11,8 @@ public class SensorApiClient
     public Task<List<SensorDto>?> GetSensorsAsync() => _http.GetFromJsonAsync<List<SensorDto>>("api/sensors");
     public Task<SensorSummaryDto?> GetSummaryAsync() => _http.GetFromJsonAsync<SensorSummaryDto>("api/sensors/summary");
     public Task<HttpResponseMessage> RegisterAsync(SensorDto sensor) => _http.PostAsJsonAsync("api/sensors", sensor);
-    public Task<HttpResponseMessage> UploadFileAsync(string mac, MultipartFormDataContent content) => _http.PostAsync($"api/sensors/{mac}/upload", content);
+    public Task<HttpResponseMessage> UploadFileAsync(string mac, MultipartFormDataContent content, string? category = null) =>
+    _http.PostAsync($"api/sensors/{mac}/upload?category={Uri.EscapeDataString(category ?? "")}", content);
     public Task<List<TimelineBucketDto>?> GetTimelineAsync() => _http.GetFromJsonAsync<List<TimelineBucketDto>>("api/commands/timeline");
 
     public async Task<(bool Success, AnomalyCellDto? Result, string? Error)> PushMoistureAsync(string sensorId, float value)
@@ -90,8 +91,8 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
         _http.PostAsync("api/commands/undo", null);
     public Task<List<string>?> GetActiveFaultsAsync() => _http.GetFromJsonAsync<List<string>>("api/commands/faults");
 
-    public Task<List<SensorFileDto>?> GetSensorFilesAsync(string mac) =>
-    _http.GetFromJsonAsync<List<SensorFileDto>>($"api/sensors/{mac}/files");
+    public Task<List<SensorFileDto>?> GetSensorFilesAsync(string mac, string? category = null) =>
+    _http.GetFromJsonAsync<List<SensorFileDto>>($"api/sensors/{mac}/files?category={Uri.EscapeDataString(category ?? "")}");
     
     public Task<InsightsSnapshotDto?> GetInsightsAsync() =>
     _http.GetFromJsonAsync<InsightsSnapshotDto>("api/insights");
