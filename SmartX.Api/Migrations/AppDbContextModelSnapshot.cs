@@ -104,6 +104,14 @@ namespace SmartX.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -111,9 +119,15 @@ namespace SmartX.Api.Migrations
                     b.Property<int>("SensorProfileId")
                         .HasColumnType("integer");
 
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("StoredPath")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
