@@ -64,7 +64,7 @@
                 <div class="history-list">
                     @foreach (var cmd in _commandHistory.Take(5))
                     {
-                        <div class="history-item mono">@cmd.Type → @cmd.TargetMac · @cmd.IssuedAt.ToLocalTime().ToString("HH:mm:ss")</div>
+                        <div class="history-item mono">@cmd.Type → @cmd.TargetMac · @cmd.IssuedAt.ToLocalTime().ToString("HH:mm:ss") · @Describe(cmd)</div>
                     }
                 </div>
             }
@@ -73,6 +73,36 @@
             </div>
         </section>
     </div>
+
+        <section class="card">
+        <div class="card-header">
+            <h3>Processing Log</h3>
+            <span class="meta">priority alerts bypass the standard queue</span>
+        </div>
+        @if (_processedLog.Count == 0)
+        {
+            <p class="empty-state">Nothing processed yet. Readings appear here as the processor handles them.</p>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead><tr><th>Time</th><th>Sensor</th><th>Severity</th><th>Lane</th><th>Waited</th><th>Jumped</th></tr></thead>
+                <tbody>
+                    @foreach (var p in _processedLog)
+                    {
+                        <tr>
+                            <td style="color: var(--text-faint); font-size: 0.8rem;">@p.ProcessedAt.ToLocalTime().ToString("HH:mm:ss")</td>
+                            <td class="mono">@p.SensorId</td>
+                            <td><span class="badge @StatusBadge(p.Severity)">@p.Severity</span></td>
+                            <td style="color: var(--text);">@p.Lane</td>
+                            <td class="mono">@p.WaitMs.ToString("0") ms</td>
+                            <td class="mono">@(p.Lane == "Priority" && p.StandardItemsBypassed > 0 ? $"{p.StandardItemsBypassed} ahead" : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
 
     <div class="insights-grid">
         <section class="card">
@@ -211,7 +241,7 @@
         else
         {
             <table class="data-table">
-                <thead><tr><th>MAC</th><th>Category</th><th>Last Value</th><th>Status</th><th>Last Seen</th></tr></thead>
+                <thead><tr><th>MAC</th><th>Category</th><th>Last Value</th><th>Status</th><th>Actuators</th><th>Last Seen</th></tr></thead>
                 <tbody>
                     @foreach (var d in shown)
                     {
@@ -220,7 +250,18 @@
                             <td style="color: var(--text);">@d.Category</td>
                             <td class="mono">@(d.LastValue?.ToString("0.0") ?? "—")</td>
                             <td><span class="badge @StatusBadge(d.Status)">@d.Status</span></td>
-                            <td style="color: var(--text-faint); font-size: 0.8rem;">@d.LastSeen.ToLocalTime().ToString("HH:mm:ss")</td>
+                            <td>
+                                @if (ShowActuators(d))
+                                {
+                                    <span class="badge @(d.Actuators.PumpRunning ? "badge-emerald" : "badge-info")">Pump @(d.Actuators.PumpRunning ? "running" : "idle")</span>
+                                    <span class="badge @(d.Actuators.RelayOn ? "badge-emerald" : "badge-info")">Relay @(d.Actuators.RelayOn ? "on" : "off")</span>
+                                    <span class="badge @(d.Actuators.ValveOpen ? "badge-emerald" : "badge-amber")">Valve @(d.Actuators.ValveOpen ? "open" : "closed")</span>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--text-faint);">—</span>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -237,6 +278,7 @@
     private List<LiveDeviceStateDto> _devices => Store.Devices;
     private QueueDepthDto? _queueDepths => Store.QueueDepths;
     private List<DeviceCommandDto> _commandHistory => Store.CommandHistory;
+    private List<ProcessedReadingDto> _processedLog => Store.ProcessedLog;
     private List<TimelineBucketDto> _timelineBuckets => Store.Timeline;
     private List<string> _activeFaults => Store.ActiveFaults;
     private InsightsSnapshotDto _insights => Store.Insights;
@@ -366,5 +408,16 @@
         "Critical" => "badge-rose",
         "Warning" => "badge-amber",
         _ => "badge-emerald"
+    };
+
+    private static bool ShowActuators(LiveDeviceStateDto d) =>
+    d.Category == "Actuator" || d.Actuators.PumpRunning || d.Actuators.RelayOn || !d.Actuators.ValveOpen;
+
+    private static string Describe(DeviceCommandDto c) => c.Type switch
+    {
+        "TriggerPump" => $"pump {(c.Before.PumpRunning ? "running" : "idle")} → {(c.After.PumpRunning ? "running" : "idle")}",
+        "ToggleRelay" => $"relay {(c.Before.RelayOn ? "on" : "off")} → {(c.After.RelayOn ? "on" : "off")}",
+        "ShutdownValve" => $"valve {(c.Before.ValveOpen ? "open" : "closed")} → {(c.After.ValveOpen ? "open" : "closed")}",
+        _ => ""
     };
 }
