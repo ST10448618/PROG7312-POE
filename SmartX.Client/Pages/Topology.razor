@@ -1,0 +1,236 @@
+@page "/topology"
+@using SmartX.Client.Models
+@using SmartX.Client.Services
+@implements IDisposable
+@inject SensorApiClient Api
+
+<div class="topo-page">
+
+    <div class="page-header">
+        <h1>Network Topology &amp; Mesh Routing</h1>
+        <p class="page-subtitle">Live map of the ESP32 mesh and the wireless links between nodes · refreshes every few seconds</p>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert-banner">@_error</div>
+    }
+
+    @if (_mesh is null)
+    {
+        <p class="empty-state">Loading the mesh…</p>
+    }
+    else
+    {
+        <div class="stat-grid">
+            <div class="stat-card">
+                <p class="stat-label">Nodes</p>
+                <p class="stat-value">@_mesh.NodeCount</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Links</p>
+                <p class="stat-value">@_mesh.EdgeCount</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Nodes down</p>
+                <p class="stat-value @(_mesh.DownCount > 0 ? "rose" : "emerald")">@_mesh.DownCount</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Active links</p>
+                <p class="stat-value">@ActiveLinks / @_mesh.EdgeCount</p>
+            </div>
+        </div>
+
+        <div class="topo-layout">
+            <section class="card topo-map-card">
+                <div class="card-header">
+                    <h3>Mesh map</h3>
+                    <span class="meta">Click a node to inspect it and see its links and costs.</span>
+                </div>
+
+                <div class="topo-canvas">
+                    <svg class="topo-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                        @foreach (var e in _mesh.Edges)
+                        {
+                            if (!_byId.TryGetValue(e.From, out var a) || !_byId.TryGetValue(e.To, out var b)) { continue; }
+                            <line x1="@F(a.X)" y1="@F(a.Y)" x2="@F(b.X)" y2="@F(b.Y)" class="@EdgeClass(e)" vector-effect="non-scaling-stroke" />
+                        }
+                    </svg>
+
+                    @foreach (var n in _mesh.Nodes)
+                    {
+                        <button type="button" class="@NodeClass(n)" style="left: @(F(n.X))%; top: @(F(n.Y))%;"
+                                title="@n.Id" @onclick="() => Select(n.Id)">@n.Label</button>
+                    }
+
+                    @if (_selectedId is not null)
+                    {
+                        foreach (var e in SelectedEdges())
+                        {
+                            if (!_byId.TryGetValue(e.From, out var a) || !_byId.TryGetValue(e.To, out var b)) { continue; }
+                            <span class="topo-cost" style="left: @(F((a.X + b.X) / 2))%; top: @(F((a.Y + b.Y) / 2))%;">@e.Cost.ToString("0.0")</span>
+                        }
+                    }
+                </div>
+
+                <div class="topo-legend">
+                    <span class="topo-legend-item"><span class="topo-dot ok"></span>Normal</span>
+                    <span class="topo-legend-item"><span class="topo-dot warn"></span>Warning</span>
+                    <span class="topo-legend-item"><span class="topo-dot crit"></span>Critical</span>
+                    <span class="topo-legend-item"><span class="topo-dot down"></span>Down</span>
+                    <span class="topo-legend-item"><span class="topo-dot gw"></span>Gateway</span>
+                    <span class="topo-legend-item"><span class="topo-line-key"></span>Link</span>
+                    <span class="topo-legend-item"><span class="topo-line-key off"></span>Inactive link</span>
+                </div>
+            </section>
+
+            <section class="card topo-detail-card">
+                @if (Selected is null)
+                {
+                    <h3>Node details</h3>
+                    <p class="empty-state">Select a node on the map to see its location, status and links.</p>
+                }
+                else
+                {
+                    <div class="card-header">
+                        <h3>@(Selected.IsGateway ? "Gateway" : $"Node {Selected.Label}")</h3>
+                        <span class="badge @StatusBadge(Selected.Status)">@Selected.Status</span>
+                    </div>
+
+                    <p class="mono topo-mac">@Selected.Id</p>
+
+                    <div class="topo-facts">
+                        <div><span class="stat-label">Category</span><span class="topo-fact">@Selected.Category</span></div>
+                        <div><span class="stat-label">Location</span><span class="topo-fact">@Selected.Location</span></div>
+                        <div><span class="stat-label">Last value</span><span class="topo-fact mono">@(Selected.LastValue is double v ? v.ToString("0.0") : "—")</span></div>
+                        <div><span class="stat-label">Links</span><span class="topo-fact mono">@Selected.Degree</span></div>
+                    </div>
+
+                    <p class="stat-label topo-links-title">Links (cheapest first)</p>
+                    <div class="topo-links">
+                        @foreach (var l in SelectedLinks())
+                        {
+                            <button type="button" class="topo-link-row" @onclick="() => Select(l.Other.Id)">
+                                <span class="mono">@l.Other.Label</span>
+                                <span class="topo-link-name">@(l.Other.IsGateway ? "Gateway" : l.Other.Category)</span>
+                                <span class="mono topo-link-cost">@l.Edge.Cost.ToString("0.0")</span>
+                                <span class="badge @StatusBadge(l.Other.Status)">@(l.Edge.Active ? l.Other.Status : "Inactive")</span>
+                            </button>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private MeshSnapshotDto? _mesh;
+    private Dictionary<string, MeshNodeDto> _byId = new(StringComparer.OrdinalIgnoreCase);
+    private string? _selectedId;
+    private string? _error;
+
+    private int ActiveLinks => _mesh?.Edges.Count(e => e.Active) ?? 0;
+    private MeshNodeDto? Selected => _selectedId is not null && _byId.TryGetValue(_selectedId, out var n) ? n : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _ = PollAsync();
+    }
+
+    private async Task PollAsync()
+    {
+        var ct = _cts.Token;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3), ct);
+                await LoadAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var snapshot = await Api.GetMeshTopologyAsync();
+            if (snapshot is null) return;
+
+            _mesh = snapshot;
+            _byId = snapshot.Nodes.ToDictionary(n => n.Id, StringComparer.OrdinalIgnoreCase);
+            _error = null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
+        {
+            _error = _mesh is null
+                ? "The mesh is still loading or the API is unreachable. Retrying…"
+                : "Lost contact with the API. Showing the last known state.";
+        }
+    }
+
+    private void Select(string id) => _selectedId = _selectedId == id ? null : id;
+
+    // ---------- selection helpers
+
+    private IEnumerable<MeshEdgeDto> SelectedEdges() =>
+        _mesh is null || _selectedId is null
+            ? Enumerable.Empty<MeshEdgeDto>()
+            : _mesh.Edges.Where(e => Same(e.From, _selectedId) || Same(e.To, _selectedId));
+
+    private List<(MeshEdgeDto Edge, MeshNodeDto Other)> SelectedLinks()
+    {
+        var result = new List<(MeshEdgeDto, MeshNodeDto)>();
+        foreach (var e in SelectedEdges().OrderBy(e => e.Cost))
+        {
+            var otherId = Same(e.From, _selectedId!) ? e.To : e.From;
+            if (_byId.TryGetValue(otherId, out var other)) result.Add((e, other));
+        }
+        return result;
+    }
+
+    private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    // ---------- styling helpers
+
+    private string NodeClass(MeshNodeDto n)
+    {
+        var state = n.IsGateway ? "gw" : n.IsDown ? "down" : n.Status switch
+        {
+            "Critical" => "crit",
+            "Warning" => "warn",
+            _ => "ok"
+        };
+        var selected = _selectedId is not null && Same(n.Id, _selectedId) ? " selected" : "";
+        return $"topo-node {state}{selected}";
+    }
+
+    private string EdgeClass(MeshEdgeDto e)
+    {
+        if (!e.Active) return "topo-edge off";
+        return _selectedId is not null && (Same(e.From, _selectedId) || Same(e.To, _selectedId)) ? "topo-edge sel" : "topo-edge";
+    }
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Critical" => "badge-rose",
+        "Warning" => "badge-amber",
+        "Disconnected" or "Inactive" => "badge-info",
+        "Gateway" => "badge-slate",
+        _ => "badge-emerald"
+    };
+
+    // Invariant culture so coordinates never come out as "46,5" on a machine with a comma decimal separator.
+    private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}
