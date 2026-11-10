@@ -71,9 +71,10 @@ public class TelemetryIngestionService
 
         await _db.SaveChangesAsync();
 
-        // Predictive engine learns from every Critical/Warning alert.
+        // Predictive engine learns from every Critical/Warning alert, and tracks readings for trend forecasts.
         if (severity is "Critical" or "Warning")
             _engine.RecordAlert(packet.SensorId, severity);
+        _engine.RecordReading(packet.SensorId, packet.NumericValue);
 
         var deviceStatus = severity switch
         {
@@ -91,7 +92,7 @@ public class TelemetryIngestionService
             _commandStream.EnqueueStandard(queued);
 
         if (_faultTracker.ClearFault(packet.SensorId))
-        await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
+            await _hub.Clients.All.SendAsync("FaultSetChanged", _faultTracker.GetAllFaulted());
 
         await _hub.Clients.All.SendAsync("QueueDepthChanged", new
         {
@@ -112,7 +113,6 @@ public class TelemetryIngestionService
     public async Task<AnomalyResult> MarkDisconnectedAsync(string sensorId)
     {
         var result = _anomaly.Score(sensorId, 0, sensorConnected: false);
-
 
         if (!_faultTracker.MarkFaulted(sensorId))
             return result;
