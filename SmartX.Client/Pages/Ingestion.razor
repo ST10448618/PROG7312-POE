@@ -139,7 +139,7 @@
             <hr style="border: none; border-top: 1px solid var(--line); margin: 1rem 0;" />
 
             <p class="stat-label" style="margin-bottom: 0.5rem;">Attach file</p>
-                        <div class="form-field">
+            <div class="form-field">
                 <label>File type</label>
                 <select @bind="_uploadCategory">
                     <option value="">Auto-detect from extension</option>
@@ -149,6 +149,7 @@
                     <option value="Other">Other</option>
                 </select>
             </div>
+            <InputFile OnChange="e => UploadFile(e, _managingSensor.MacAddress)" disabled="@_uploading" />
 
             @if (_uploading)
             {

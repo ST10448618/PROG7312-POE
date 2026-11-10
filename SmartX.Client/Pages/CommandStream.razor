@@ -74,7 +74,7 @@
         </section>
     </div>
 
-        <section class="card">
+    <section class="card">
         <div class="card-header">
             <h3>Processing Log</h3>
             <span class="meta">priority alerts bypass the standard queue</span>
@@ -262,6 +262,7 @@
                                     <span style="color: var(--text-faint);">—</span>
                                 }
                             </td>
+                            <td style="color: var(--text-faint); font-size: 0.8rem;">@d.LastSeen.ToLocalTime().ToString("HH:mm:ss")</td>
                         </tr>
                     }
                 </tbody>
@@ -411,7 +412,7 @@
     };
 
     private static bool ShowActuators(LiveDeviceStateDto d) =>
-    d.Category == "Actuator" || d.Actuators.PumpRunning || d.Actuators.RelayOn || !d.Actuators.ValveOpen;
+        d.Category == "Actuator" || d.Actuators.PumpRunning || d.Actuators.RelayOn || !d.Actuators.ValveOpen;
 
     private static string Describe(DeviceCommandDto c) => c.Type switch
     {
