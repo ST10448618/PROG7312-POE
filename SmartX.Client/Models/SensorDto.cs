@@ -27,38 +27,45 @@ public class SensorSummaryDto
     public Dictionary<string, int> ByCategory { get; set; } = new();
 }
 
-public class AnomalyLogDto { 
-    public int Id { get; set; } 
-    public string SensorId { get; set; } = ""; 
-    public double Value { get; set; } 
-    public double Score { get; set; } 
-    public string Colour { get; set; } = ""; 
-    public string Severity { get; set; } = ""; 
-    public bool Acknowledged { get; set; } 
-    public DateTime Timestamp { get; set; } 
+public class AnomalyLogDto
+{
+    public int Id { get; set; }
+    public string SensorId { get; set; } = "";
+    public double Value { get; set; }
+    public double Score { get; set; }
+    public string Colour { get; set; } = "";
+    public string Severity { get; set; } = "";
+    public bool Acknowledged { get; set; }
+    public DateTime Timestamp { get; set; }
 }
-public class IntegrationDto { 
-    public int Id { get; set; } 
-    public string Name { get; set; } = ""; 
-    public string WebhookUrl { get; set; } = ""; 
-    public string Status { get; set; } = "Pending"; 
-    public DateTime? LastSyncAt { get; set; } 
+
+public class IntegrationDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string WebhookUrl { get; set; } = "";
+    public string Status { get; set; } = "Pending";
+    public DateTime? LastSyncAt { get; set; }
 }
-public class SystemHealthDto { 
-    public double UptimeSeconds { get; set; } 
-    public bool DbConnected { get; set; } 
-    public int TotalSensors { get; set; } 
-    public int OnlineSensors { get; set; } 
-    public int TotalTelemetryLogs { get; set; } 
-    public int CriticalAnomaliesLast24h { get; set; } 
-    public int LiveHubConnections { get; set; } 
+
+public class SystemHealthDto
+{
+    public double UptimeSeconds { get; set; }
+    public bool DbConnected { get; set; }
+    public int TotalSensors { get; set; }
+    public int OnlineSensors { get; set; }
+    public int TotalTelemetryLogs { get; set; }
+    public int CriticalAnomaliesLast24h { get; set; }
+    public int LiveHubConnections { get; set; }
 }
-public class TelemetryLogDto { 
-    public string SensorId { get; set; } = ""; 
-    public string RawValue { get; set; } = ""; 
-    public string Unit { get; set; } = ""; 
-    public DateTime Timestamp { get; set; } 
-    }
+
+public class TelemetryLogDto
+{
+    public string SensorId { get; set; } = "";
+    public string RawValue { get; set; } = "";
+    public string Unit { get; set; } = "";
+    public DateTime Timestamp { get; set; }
+}
 
 public class SensorFileDto
 {
@@ -80,4 +87,3 @@ public class LiveDeviceStateDto
     public DateTime LastSeen { get; set; }
     public ActuatorStateDto Actuators { get; set; } = new();
 }
-
