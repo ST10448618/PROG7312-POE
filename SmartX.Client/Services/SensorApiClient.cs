@@ -94,10 +94,12 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
     public Task<List<SensorFileDto>?> GetSensorFilesAsync(string mac, string? category = null) =>
     _http.GetFromJsonAsync<List<SensorFileDto>>($"api/sensors/{mac}/files?category={Uri.EscapeDataString(category ?? "")}");
     
+    public Task<MeshSnapshotDto?> GetMeshTopologyAsync() =>
+        _http.GetFromJsonAsync<MeshSnapshotDto>("api/mesh/topology");
+
     public Task<InsightsSnapshotDto?> GetInsightsAsync() =>
     _http.GetFromJsonAsync<InsightsSnapshotDto>("api/insights");
 
     public Task<HttpResponseMessage> RecordSearchAsync(string text, string category, string state) =>
     _http.PostAsJsonAsync("api/insights/search", new { text, category, state });
 }
-
