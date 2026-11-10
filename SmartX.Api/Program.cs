@@ -44,6 +44,8 @@ builder.Services.AddScoped<SensorService>();
 builder.Services.AddScoped<TelemetryIngestionService>();
 builder.Services.AddScoped<DeploymentTreeService>();
 builder.Services.AddHostedService<MockTelemetrySeeder>();
+builder.Services.AddSingleton<MeshService>();
+builder.Services.AddHostedService<MeshTopologySeeder>(); // must come after MockTelemetrySeeder
 builder.Services.AddScoped<IntegrationService>();
 builder.Services.AddScoped<IntegrationDispatchService>();
 builder.Services.AddScoped<AnomalyLogService>();
@@ -68,7 +70,7 @@ using (var scope = app.Services.CreateScope())
     var registry = scope.ServiceProvider.GetRequiredService<LiveDeviceRegistry>();
     var existingSensors = db.Sensors.ToList();
     foreach (var sensor in existingSensors)
-    registry.Register(sensor.MacAddress, sensor.Location, sensor.Category);
+        registry.Register(sensor.MacAddress, sensor.Location, sensor.Category);
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -89,6 +91,7 @@ app.MapTelemetryEndpoints();
 app.MapPowerEndpoints();
 app.MapCommandStreamEndpoints();
 app.MapDeploymentEndpoints();
+app.MapMeshEndpoints();
 app.MapHub<TelemetryHub>("/hubs/telemetry");
 app.MapAnomalyLogEndpoints();
 app.MapIntegrationEndpoints();

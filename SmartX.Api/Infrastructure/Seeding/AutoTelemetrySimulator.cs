@@ -10,7 +10,7 @@ public class AutoTelemetrySimulator : BackgroundService
     private readonly IConfiguration _config;
     private readonly ILogger<AutoTelemetrySimulator> _logger;
     private readonly Random _rnd = new();
-    private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _tickInterval;
 
     public AutoTelemetrySimulator(IServiceScopeFactory scopeFactory, IHttpClientFactory httpFactory,
         IConfiguration config, ILogger<AutoTelemetrySimulator> logger)
@@ -19,6 +19,9 @@ public class AutoTelemetrySimulator : BackgroundService
         _httpFactory = httpFactory;
         _config = config;
         _logger = logger;
+
+        // With a dozen mesh sensors, a 2 s tick means each one reports every ~25 s on average.
+        _tickInterval = TimeSpan.FromMilliseconds(config.GetValue("Simulator:TickMs", 2000));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -31,7 +34,7 @@ public class AutoTelemetrySimulator : BackgroundService
             try { await SimulateOneTickAsync(stoppingToken); }
             catch (Exception ex) { _logger.LogWarning(ex, "AutoTelemetrySimulator tick failed"); }
 
-            await Task.Delay(TickInterval, stoppingToken);
+            await Task.Delay(_tickInterval, stoppingToken);
         }
     }
 
