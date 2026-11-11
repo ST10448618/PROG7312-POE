@@ -1,0 +1,134 @@
+@using SmartX.Client.Models
+
+<div class="topo-canvas">
+    <svg class="topo-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        @foreach (var e in Mesh.Edges)
+        {
+            if (!_byId.TryGetValue(e.From, out var a) || !_byId.TryGetValue(e.To, out var b)) { continue; }
+            <line x1="@F(a.X)" y1="@F(a.Y)" x2="@F(b.X)" y2="@F(b.Y)" class="@EdgeClass(e)" vector-effect="non-scaling-stroke" />
+        }
+    </svg>
+
+    @foreach (var n in Mesh.Nodes)
+    {
+        <button type="button" class="@NodeClass(n)" style="left: @(F(n.X))%; top: @(F(n.Y))%;"
+                title="@NodeTitle(n)" @onclick="() => Pick(n.Id)">@n.Label</button>
+    }
+
+    @foreach (var e in LabelledEdges())
+    {
+        if (!_byId.TryGetValue(e.From, out var a) || !_byId.TryGetValue(e.To, out var b)) { continue; }
+        <span class="topo-cost" style="left: @(F((a.X + b.X) / 2))%; top: @(F((a.Y + b.Y) / 2))%;">@e.Cost.ToString("0.0")</span>
+    }
+</div>
+
+<div class="topo-legend">
+    <span class="topo-legend-item"><span class="topo-dot"></span>Normal</span>
+    <span class="topo-legend-item"><span class="topo-dot warn"></span>Warning</span>
+    <span class="topo-legend-item"><span class="topo-dot crit"></span>Critical</span>
+    <span class="topo-legend-item"><span class="topo-dot down"></span>Down</span>
+    <span class="topo-legend-item"><span class="topo-dot stranded"></span>Cut off</span>
+    <span class="topo-legend-item"><span class="topo-dot gw"></span>Gateway</span>
+    <span class="topo-legend-item"><span class="topo-line-key mst"></span>MST link</span>
+    <span class="topo-legend-item"><span class="topo-line-key route"></span>MST route</span>
+    <span class="topo-legend-item"><span class="topo-line-key alt"></span>Fewest-hops route</span>
+    <span class="topo-legend-item"><span class="topo-line-key off"></span>Inactive link</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MeshSnapshotDto Mesh { get; set; } = default!;
+    [Parameter] public MeshAnalysisDto? Analysis { get; set; }
+    [Parameter] public bool ShowMst { get; set; } = true;
+    [Parameter] public string? SelectedId { get; set; }
+    [Parameter] public HashSet<string>? AssumedDown { get; set; }
+    [Parameter] public IReadOnlyList<string>? RoutePath { get; set; }
+    [Parameter] public IReadOnlyList<string>? AltPath { get; set; }
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+
+    private Dictionary<string, MeshNodeDto> _byId = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _mst = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _route = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _alt = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _routeNodes = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _stranded = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override void OnParametersSet()
+    {
+        _byId = Mesh.Nodes.ToDictionary(n => n.Id, StringComparer.OrdinalIgnoreCase);
+
+        _mst = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (Analysis is not null)
+            foreach (var e in Analysis.Mst.Edges) _mst.Add(Key(e.From, e.To));
+
+        _route = PathKeys(RoutePath);
+        _alt = PathKeys(AltPath);
+        _routeNodes = new HashSet<string>(RoutePath ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        _stranded = new HashSet<string>(Analysis?.Stranded ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private Task Pick(string id) => OnSelect.InvokeAsync(id);
+
+    // An undirected link has one key whichever way round its ends are written.
+    private static string Key(string a, string b) =>
+        string.Compare(a, b, StringComparison.OrdinalIgnoreCase) <= 0 ? $"{a}|{b}" : $"{b}|{a}";
+
+    private static HashSet<string> PathKeys(IReadOnlyList<string>? path)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (path is null) return set;
+        for (var i = 0; i + 1 < path.Count; i++) set.Add(Key(path[i], path[i + 1]));
+        return set;
+    }
+
+    private static bool Same(string a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    private bool IsAssumed(string id) => AssumedDown is not null && AssumedDown.Contains(id);
+
+    private bool Adjacent(MeshEdgeDto e) =>
+        !string.IsNullOrEmpty(SelectedId) && (Same(e.From, SelectedId) || Same(e.To, SelectedId));
+
+    private IEnumerable<MeshEdgeDto> LabelledEdges() =>
+        Mesh.Edges.Where(e =>
+        {
+            var key = Key(e.From, e.To);
+            return _route.Contains(key) || _alt.Contains(key) || Adjacent(e);
+        });
+
+    private string EdgeClass(MeshEdgeDto e)
+    {
+        var key = Key(e.From, e.To);
+        var cls = "topo-edge";
+        if (ShowMst && _mst.Contains(key)) cls += " mst";
+        if (!e.Active || IsAssumed(e.From) || IsAssumed(e.To)) cls += " off";
+        else if (Adjacent(e)) cls += " sel";
+        if (_alt.Contains(key) && !_route.Contains(key)) cls += " alt";
+        if (_route.Contains(key)) cls += " route";
+        return cls;
+    }
+
+    private string NodeClass(MeshNodeDto n)
+    {
+        var state = n.IsGateway ? "gw" : n.IsDown ? "down" : n.Status switch
+        {
+            "Critical" => "crit",
+            "Warning" => "warn",
+            _ => ""
+        };
+        var cls = $"topo-node {state}";
+        if (IsAssumed(n.Id)) cls += " assumed";
+        if (_stranded.Contains(n.Id)) cls += " stranded";
+        if (_routeNodes.Contains(n.Id)) cls += " onroute";
+        if (Same(n.Id, SelectedId)) cls += " selected";
+        return cls;
+    }
+
+    private string NodeTitle(MeshNodeDto n)
+    {
+        var text = $"{n.Id} · {n.Status}";
+        if (IsAssumed(n.Id)) text += " (what-if: down)";
+        if (_stranded.Contains(n.Id)) text += " (cut off from the gateway)";
+        return text;
+    }
+
+    // Invariant culture so coordinates never come out as "46,5" on a machine with a comma decimal separator.
+    private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}
