@@ -1,0 +1,37 @@
+@using SmartX.Client.Models
+
+<div class="route-box @Tone">
+    <p class="stat-label">@Title</p>
+
+    @if (Route is null || !Route.Reachable)
+    {
+        <p class="route-none">No route: this node is down or cut off from the gateway.</p>
+    }
+    else
+    {
+        <div class="route-hops">
+            @for (var i = 0; i < Route.Path.Count; i++)
+            {
+                var id = Route.Path[i];
+                <span class="topo-hop @HopClass(i)" title="@id">@Label(id)</span>
+                @if (i < Route.Path.Count - 1)
+                {
+                    <span class="topo-arrow">→</span>
+                }
+            }
+        </div>
+        <p class="route-meta">
+            <span class="mono">@Route.Hops</span> hops · total link cost <span class="mono">@Route.Cost.ToString("0.0")</span>
+        </p>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RouteDto? Route { get; set; }
+    [Parameter] public string Tone { get; set; } = "";
+    [Parameter] public Func<string, string> Label { get; set; } = id => id;
+
+    private string HopClass(int index) =>
+        index == 0 ? "start" : Route is not null && index == Route.Path.Count - 1 ? "end" : "";
+}
