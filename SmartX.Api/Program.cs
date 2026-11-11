@@ -46,6 +46,7 @@ builder.Services.AddScoped<DeploymentTreeService>();
 builder.Services.AddHostedService<MockTelemetrySeeder>();
 builder.Services.AddSingleton<MeshService>();
 builder.Services.AddHostedService<MeshTopologySeeder>(); // must come after MockTelemetrySeeder
+builder.Services.AddSingleton<MeshAnalysisService>();
 builder.Services.AddSingleton<TelemetryHistoryService>();
 builder.Services.AddHostedService<TelemetryHistoryBuilder>(); // needs the mesh sensors to exist, so it comes after MeshTopologySeeder
 builder.Services.AddScoped<IntegrationService>();
