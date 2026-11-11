@@ -754,3 +754,128 @@ input[type="file"]::file-selector-button:hover { background: var(--panel); }
     .dash-page .heatmap-row { flex-wrap: wrap; }
     .dash-page .row-label { width: 100%; }
 }
+
+/* ===== Topology (global: shared by the page and its components) ===== */
+.topo-page { display: flex; flex-direction: column; gap: 1.25rem; }
+.topo-page .page-header { margin-bottom: 0; }
+.topo-page .stat-grid { margin-bottom: 0; }
+.topo-page .card h3, .hist-card h3, .bench-card h3 { margin: 0; font-size: 1rem; font-weight: 600; color: var(--text); }
+.topo-page .card .meta, .hist-card .meta, .bench-card .meta { display: block; font-size: 0.8rem; color: var(--text-dim); margin-top: 0.2rem; }
+
+.topo-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; align-items: start; }
+.topo-map-card, .topo-detail-card { color: var(--text); min-width: 0; }
+
+.topo-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.btn-secondary.is-on { border-color: var(--emerald-border); background: var(--emerald-bg); color: var(--emerald); }
+.topo-whatif-note { color: var(--text-dim); font-size: 0.8rem; margin: 0.75rem 0 0; }
+.topo-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem; align-items: center; }
+.topo-chip {
+    padding: 0.2rem 0.6rem; border-radius: 999px; cursor: pointer;
+    border: 1px dashed var(--info-border); background: var(--info-bg); color: var(--info);
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;
+}
+
+.topo-canvas {
+    position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 340px; margin-top: 1rem;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+}
+.topo-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.topo-edge { stroke: #52525b; stroke-width: 1.5px; fill: none; }
+.topo-edge.mst { stroke: #2f9e78; stroke-width: 2.5px; }
+.topo-edge.sel { stroke: var(--info); stroke-width: 2.5px; }
+.topo-edge.off { stroke: #3f3f46; stroke-width: 1.5px; stroke-dasharray: 5 5; opacity: 0.6; }
+.topo-edge.alt { stroke: var(--amber); stroke-width: 3px; stroke-dasharray: 7 5; }
+.topo-edge.route { stroke: var(--emerald); stroke-width: 4px; stroke-dasharray: none; }
+
+.topo-node {
+    position: absolute; transform: translate(-50%, -50%); width: 40px; height: 40px; padding: 0;
+    border-radius: 50%; border: 2px solid var(--emerald); background: var(--emerald-bg); color: var(--text);
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; font-weight: 600; cursor: pointer;
+    transition: box-shadow 0.15s, transform 0.15s;
+}
+.topo-node:hover { transform: translate(-50%, -50%) scale(1.1); }
+.topo-node.warn { border-color: var(--amber); background: var(--amber-bg); }
+.topo-node.crit { border-color: var(--rose); background: var(--rose-bg); }
+.topo-node.down { border-color: var(--info); background: var(--info-bg); border-style: dashed; opacity: 0.85; }
+.topo-node.gw { width: 52px; height: 52px; border-color: #a1a1aa; background: #27272a; }
+.topo-node.assumed { border-color: var(--info); border-style: dashed; background: var(--info-bg); opacity: 0.6; text-decoration: line-through; }
+.topo-node.stranded { border-color: var(--amber); border-style: dotted; }
+.topo-node.onroute { box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.35); }
+.topo-node.selected { box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.4); }
+
+.topo-cost {
+    position: absolute; transform: translate(-50%, -50%); padding: 1px 6px; border-radius: 6px;
+    background: var(--panel); border: 1px solid var(--info-border); color: var(--info);
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; pointer-events: none;
+}
+
+.topo-legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; font-size: 0.78rem; color: var(--text-dim); }
+.topo-legend-item { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-dim); }
+.topo-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--emerald); background: var(--emerald-bg); display: inline-block; }
+.topo-dot.warn { border-color: var(--amber); background: var(--amber-bg); }
+.topo-dot.crit { border-color: var(--rose); background: var(--rose-bg); }
+.topo-dot.down { border-color: var(--info); background: var(--info-bg); border-style: dashed; }
+.topo-dot.gw { border-color: #a1a1aa; background: #27272a; }
+.topo-dot.stranded { border-color: var(--amber); border-style: dotted; background: transparent; }
+.topo-line-key { width: 22px; height: 0; border-top: 2px solid #52525b; display: inline-block; }
+.topo-line-key.mst { border-top: 3px solid #2f9e78; }
+.topo-line-key.route { border-top: 4px solid var(--emerald); }
+.topo-line-key.alt { border-top: 3px dashed var(--amber); }
+.topo-line-key.off { border-top-style: dashed; border-top-color: #71717a; }
+
+.topo-mac { margin: 0.5rem 0 1rem; color: var(--text-dim); font-size: 0.8rem; }
+.topo-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem 1rem; }
+.topo-facts > div { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.topo-fact { color: var(--text); font-size: 0.88rem; overflow-wrap: anywhere; }
+.topo-links-title { margin: 1.25rem 0 0.5rem; }
+.topo-links { display: flex; flex-direction: column; gap: 0.4rem; max-height: 240px; overflow-y: auto; }
+.topo-link-row {
+    display: grid; grid-template-columns: 2.2rem 1fr auto auto; align-items: center; gap: 0.6rem; width: 100%;
+    padding: 0.45rem 0.6rem; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    color: var(--text); font-size: 0.82rem; text-align: left; cursor: pointer;
+}
+.topo-link-row:hover { border-color: var(--text-faint); }
+.topo-link-name { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-link-cost { color: var(--info); }
+.topo-detail-card .btn-primary, .topo-detail-card .btn-secondary { margin-top: 1rem; }
+
+/* route finder */
+.toolbar > .btn-primary { height: 38px; }
+.topo-route-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.route-box { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; color: var(--text); min-width: 0; }
+.route-box.emerald { border-color: var(--emerald-border); }
+.route-box.amber { border-color: var(--amber-border); }
+.route-hops { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.6rem 0; }
+.topo-hop {
+    padding: 0.15rem 0.55rem; border-radius: 6px; background: var(--panel-hover); border: 1px solid var(--line);
+    color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem;
+}
+.topo-hop.start { border-color: var(--info-border); color: var(--info); }
+.topo-hop.end { border-color: #a1a1aa; }
+.topo-arrow { color: var(--text-faint); }
+.route-meta { color: var(--text-dim); font-size: 0.82rem; margin: 0; }
+.route-none { color: var(--rose); font-size: 0.85rem; margin: 0.6rem 0 0; }
+.route-note { color: var(--text-dim); font-size: 0.82rem; margin: 0.9rem 0 0; }
+
+.topo-table-wrap, .hist-table-wrap { overflow-x: auto; }
+.topo-subnets { display: flex; flex-direction: column; gap: 0.75rem; }
+.topo-subnet { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 0.85rem 1rem; color: var(--text); }
+.topo-subnet .route-hops { margin: 0.5rem 0 0; }
+
+/* history + benchmark */
+.hist-toolbar .hist-dt { min-width: 190px; color-scheme: dark; }
+.hist-presets { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
+.hist-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.85rem 1rem; margin: 0.5rem 0 1rem; }
+.hist-stats > div { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.hist-stat { font-size: 1.05rem; color: var(--text); font-weight: 600; }
+.hist-pager { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; color: var(--text-dim); font-size: 0.82rem; gap: 0.75rem; flex-wrap: wrap; }
+.bench-card button[disabled] { opacity: 0.6; cursor: wait; }
+.bench-good { color: var(--emerald); }
+
+@media (max-width: 900px) {
+    .topo-layout, .topo-route-grid { grid-template-columns: 1fr; }
+    .topo-canvas { min-height: 300px; }
+    .topo-node { width: 32px; height: 32px; font-size: 0.62rem; }
+    .topo-node.gw { width: 42px; height: 42px; }
+}
