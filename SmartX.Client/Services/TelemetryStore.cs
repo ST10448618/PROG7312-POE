@@ -16,8 +16,7 @@ public sealed class TelemetryEventDto
     public double Value { get; set; }
 }
 
-public class TelemetryStore : IAsyncDisposable
-{
+public partial class TelemetryStore : IAsyncDisposable{
     private const int MaxHeatCells = 30;
     private const int MaxLiveEvents = 15;
     private const int MaxProcessedLog = 20;
@@ -236,9 +235,9 @@ public class TelemetryStore : IAsyncDisposable
             Notify();
         });
 
-        hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", devices => { Devices = devices; Notify(); });
-        hub.On<List<string>>("FaultSetChanged", faults => { ActiveFaults = faults; Notify(); });
+        hub.On<List<LiveDeviceStateDto>>("DeviceRegistryUpdated", devices => { Devices = devices; Notify(); QueueMeshRefresh(); });        hub.On<List<string>>("FaultSetChanged", faults => { ActiveFaults = faults; Notify(); });
         hub.On<InsightsSnapshotDto>("InsightsUpdated", snapshot => { Insights = snapshot; Notify(); });
+        hub.On<MeshHealthEventDto>("MeshHealthChanged", OnMeshHealthChanged);
 
         hub.On<QueueDepthEventDto>("QueueDepthChanged", q =>
         {
