@@ -46,6 +46,8 @@ builder.Services.AddScoped<DeploymentTreeService>();
 builder.Services.AddHostedService<MockTelemetrySeeder>();
 builder.Services.AddSingleton<MeshService>();
 builder.Services.AddHostedService<MeshTopologySeeder>(); // must come after MockTelemetrySeeder
+builder.Services.AddSingleton<TelemetryHistoryService>();
+builder.Services.AddHostedService<TelemetryHistoryBuilder>(); // needs the mesh sensors to exist, so it comes after MeshTopologySeeder
 builder.Services.AddScoped<IntegrationService>();
 builder.Services.AddScoped<IntegrationDispatchService>();
 builder.Services.AddScoped<AnomalyLogService>();
@@ -92,6 +94,7 @@ app.MapPowerEndpoints();
 app.MapCommandStreamEndpoints();
 app.MapDeploymentEndpoints();
 app.MapMeshEndpoints();
+app.MapHistoryEndpoints();
 app.MapHub<TelemetryHub>("/hubs/telemetry");
 app.MapAnomalyLogEndpoints();
 app.MapIntegrationEndpoints();
