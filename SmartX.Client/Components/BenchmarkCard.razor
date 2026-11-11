@@ -1,0 +1,66 @@
+@using SmartX.Client.Services
+@implements IDisposable
+@inject TelemetryStore Store
+
+<section class="card bench-card">
+    <div class="card-header">
+        <div>
+            <h3>Performance: AVL range query vs linear scan</h3>
+            <span class="meta">Measured live on the API, with the same data and the same windows for both methods</span>
+        </div>
+        <button type="button" class="btn-secondary btn-sm" disabled="@Store.BenchRunning" @onclick="Store.RunBenchmarkAsync">
+            @(Store.BenchRunning ? "Running…" : "Run benchmark")
+        </button>
+    </div>
+
+    @if (Store.BenchError is not null)
+    {
+        <p class="status-message error">@Store.BenchError</p>
+    }
+
+    @if (Store.Benchmark is { } report)
+    {
+        <div class="topo-table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Readings</th>
+                        <th>Window</th>
+                        <th>Linear scan</th>
+                        <th>AVL tree</th>
+                        <th>Speed-up</th>
+                        <th>AVL height (min)</th>
+                        <th>Plain BST height</th>
+                        <th>Same result</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in report.Rows)
+                    {
+                        <tr>
+                            <td class="mono">@row.Size.ToString("N0")</td>
+                            <td class="mono">@row.WindowPoints</td>
+                            <td class="mono">@(row.LinearScanMicros.ToString("0.0")) µs</td>
+                            <td class="mono bench-good">@(row.AvlRangeMicros.ToString("0.0")) µs</td>
+                            <td class="mono bench-good">@(row.Speedup.ToString("0.0"))×</td>
+                            <td class="mono">@row.AvlHeight (@row.MinimumPossibleHeight)</td>
+                            <td class="mono">@(row.UnbalancedBstHeight?.ToString("N0") ?? "n/a")</td>
+                            <td>@(row.ResultsMatch ? "✓" : "✗")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="route-note">@report.Method</p>
+    }
+    else if (!Store.BenchRunning)
+    {
+        <p class="empty-state">Press “Run benchmark” to compare a full scan with the AVL range query at 1,000, 10,000 and 100,000 readings.</p>
+    }
+</section>
+
+@code {
+    protected override void OnInitialized() => Store.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Store.Changed -= OnChanged;
+}
