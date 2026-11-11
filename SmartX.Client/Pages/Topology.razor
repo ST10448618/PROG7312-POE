@@ -1,110 +1,130 @@
 @page "/topology"
+@using SmartX.Client.Components
 @using SmartX.Client.Models
 @using SmartX.Client.Services
 @implements IDisposable
-@inject SensorApiClient Api
+@inject TelemetryStore Store
 
 <div class="topo-page">
 
     <div class="page-header">
         <h1>Network Topology &amp; Mesh Routing</h1>
-        <p class="page-subtitle">Live map of the ESP32 mesh and the wireless links between nodes · refreshes every few seconds</p>
+        <p class="page-subtitle">
+            Live ESP32 mesh, the power-efficient routing tree and each sensor's history
+            @if (Store.MeshHealthChangedAt is { } changed)
+            {
+                <span> · last topology change @(changed.ToLocalTime().ToString("HH:mm:ss"))</span>
+            }
+        </p>
     </div>
 
-    @if (_error is not null)
+    @if (Store.MeshError is not null)
     {
-        <div class="alert-banner">@_error</div>
+        <div class="alert-banner">@Store.MeshError</div>
     }
 
-    @if (_mesh is null)
+    @if (Store.Mesh is null || Store.MeshAnalysis is null)
     {
         <p class="empty-state">Loading the mesh…</p>
     }
     else
     {
+        var mesh = Store.Mesh;
+        var analysis = Store.MeshAnalysis;
+
         <div class="stat-grid">
             <div class="stat-card">
-                <p class="stat-label">Nodes</p>
-                <p class="stat-value">@_mesh.NodeCount</p>
-            </div>
-            <div class="stat-card">
-                <p class="stat-label">Links</p>
-                <p class="stat-value">@_mesh.EdgeCount</p>
+                <p class="stat-label">Reachable sensors</p>
+                <p class="stat-value @(analysis.ReachableCount == SensorCount ? "emerald" : "rose")">@analysis.ReachableCount / @SensorCount</p>
             </div>
             <div class="stat-card">
                 <p class="stat-label">Nodes down</p>
-                <p class="stat-value @(_mesh.DownCount > 0 ? "rose" : "emerald")">@_mesh.DownCount</p>
+                <p class="stat-value @(analysis.DownNodes.Count > 0 ? "rose" : "emerald")">@analysis.DownNodes.Count</p>
             </div>
             <div class="stat-card">
-                <p class="stat-label">Active links</p>
-                <p class="stat-value">@ActiveLinks / @_mesh.EdgeCount</p>
+                <p class="stat-label">MST total cost</p>
+                <p class="stat-value">@analysis.Mst.TotalCost.ToString("0.0")</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Power saved vs all links</p>
+                <p class="stat-value emerald">@(analysis.MstSavingsPercent.ToString("0.0"))%</p>
             </div>
         </div>
+
+        <section class="card">
+            <div class="topo-bar">
+                <button type="button" class="btn-secondary btn-sm @(Store.TopoWhatIf ? "is-on" : "")" @onclick="ToggleWhatIf">
+                    What-if mode: @(Store.TopoWhatIf ? "on" : "off")
+                </button>
+                <button type="button" class="btn-secondary btn-sm @(Store.TopoShowMst ? "is-on" : "")" @onclick="ToggleMst">
+                    Show MST: @(Store.TopoShowMst ? "on" : "off")
+                </button>
+                @if (Store.TopoWhatIf && Store.TopoAssumedDown.Count > 0)
+                {
+                    <button type="button" class="btn-secondary btn-sm" @onclick="Store.ClearAssumedDownAsync">Reset scenario</button>
+                }
+            </div>
+
+            @if (Store.TopoWhatIf)
+            {
+                <p class="topo-whatif-note">
+                    What-if mode never touches the devices or the database. Select a node, then choose “Simulate outage”
+                    to see how the mesh heals around it.
+                </p>
+                @if (Store.TopoAssumedDown.Count > 0)
+                {
+                    <div class="topo-chips">
+                        <span class="stat-label">Assumed down:</span>
+                        @foreach (var mac in Store.TopoAssumedDown.OrderBy(m => m))
+                        {
+                            <button type="button" class="topo-chip" title="Restore" @onclick="() => Store.ToggleAssumedDownAsync(mac)">@Short(mac) ✕</button>
+                        }
+                    </div>
+                }
+            }
+        </section>
 
         <div class="topo-layout">
             <section class="card topo-map-card">
                 <div class="card-header">
                     <h3>Mesh map</h3>
-                    <span class="meta">Click a node to inspect it and see its links and costs.</span>
+                    <span class="meta">Click a node to trace its route and load its history.</span>
                 </div>
 
-                <div class="topo-canvas">
-                    <svg class="topo-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                        @foreach (var e in _mesh.Edges)
-                        {
-                            if (!_byId.TryGetValue(e.From, out var a) || !_byId.TryGetValue(e.To, out var b)) { continue; }
-                            <line x1="@F(a.X)" y1="@F(a.Y)" x2="@F(b.X)" y2="@F(b.Y)" class="@EdgeClass(e)" vector-effect="non-scaling-stroke" />
-                        }
-                    </svg>
-
-                    @foreach (var n in _mesh.Nodes)
-                    {
-                        <button type="button" class="@NodeClass(n)" style="left: @(F(n.X))%; top: @(F(n.Y))%;"
-                                title="@n.Id" @onclick="() => Select(n.Id)">@n.Label</button>
-                    }
-
-                    @if (_selectedId is not null)
-                    {
-                        foreach (var e in SelectedEdges())
-                        {
-                            if (!_byId.TryGetValue(e.From, out var a) || !_byId.TryGetValue(e.To, out var b)) { continue; }
-                            <span class="topo-cost" style="left: @(F((a.X + b.X) / 2))%; top: @(F((a.Y + b.Y) / 2))%;">@e.Cost.ToString("0.0")</span>
-                        }
-                    }
-                </div>
-
-                <div class="topo-legend">
-                    <span class="topo-legend-item"><span class="topo-dot ok"></span>Normal</span>
-                    <span class="topo-legend-item"><span class="topo-dot warn"></span>Warning</span>
-                    <span class="topo-legend-item"><span class="topo-dot crit"></span>Critical</span>
-                    <span class="topo-legend-item"><span class="topo-dot down"></span>Down</span>
-                    <span class="topo-legend-item"><span class="topo-dot gw"></span>Gateway</span>
-                    <span class="topo-legend-item"><span class="topo-line-key"></span>Link</span>
-                    <span class="topo-legend-item"><span class="topo-line-key off"></span>Inactive link</span>
-                </div>
+                <MeshMap Mesh="mesh"
+                         Analysis="analysis"
+                         ShowMst="Store.TopoShowMst"
+                         SelectedId="Store.TopoSelectedMac"
+                         AssumedDown="Store.TopoAssumedDown"
+                         RoutePath="MstPath"
+                         AltPath="HopPath"
+                         OnSelect="Select" />
             </section>
 
             <section class="card topo-detail-card">
-                @if (Selected is null)
-                {
-                    <h3>Node details</h3>
-                    <p class="empty-state">Select a node on the map to see its location, status and links.</p>
-                }
-                else
+                @if (Selected is { } sel)
                 {
                     <div class="card-header">
-                        <h3>@(Selected.IsGateway ? "Gateway" : $"Node {Selected.Label}")</h3>
-                        <span class="badge @StatusBadge(Selected.Status)">@Selected.Status</span>
+                        <h3>@(sel.IsGateway ? "Gateway" : $"Node {sel.Label}")</h3>
+                        <span class="badge @StatusBadge(sel.Status)">@sel.Status</span>
                     </div>
 
-                    <p class="mono topo-mac">@Selected.Id</p>
+                    <p class="mono topo-mac">@sel.Id</p>
 
                     <div class="topo-facts">
-                        <div><span class="stat-label">Category</span><span class="topo-fact">@Selected.Category</span></div>
-                        <div><span class="stat-label">Location</span><span class="topo-fact">@Selected.Location</span></div>
-                        <div><span class="stat-label">Last value</span><span class="topo-fact mono">@(Selected.LastValue is double v ? v.ToString("0.0") : "—")</span></div>
-                        <div><span class="stat-label">Links</span><span class="topo-fact mono">@Selected.Degree</span></div>
+                        <div><span class="stat-label">Category</span><span class="topo-fact">@sel.Category</span></div>
+                        <div><span class="stat-label">Location</span><span class="topo-fact">@sel.Location</span></div>
+                        <div><span class="stat-label">Last value</span><span class="topo-fact mono">@(sel.LastValue is double v ? v.ToString("0.0") : "—")</span></div>
+                        <div><span class="stat-label">Links</span><span class="topo-fact mono">@sel.Degree</span></div>
                     </div>
+
+                    @if (Store.TopoWhatIf && !sel.IsGateway)
+                    {
+                        var assumed = Store.TopoAssumedDown.Contains(sel.Id);
+                        <button type="button" class="@(assumed ? "btn-secondary" : "btn-primary") btn-sm" @onclick="() => Store.ToggleAssumedDownAsync(sel.Id)">
+                            @(assumed ? "Restore this node" : "Simulate outage of this node")
+                        </button>
+                    }
 
                     <p class="stat-label topo-links-title">Links (cheapest first)</p>
                     <div class="topo-links">
@@ -119,102 +139,188 @@
                         }
                     </div>
                 }
+                else
+                {
+                    <h3>Node details</h3>
+                    <p class="empty-state">Select a node on the map to see its location, status and links.</p>
+                }
             </section>
         </div>
+
+        <section class="card">
+            <div class="card-header">
+                <div>
+                    <h3>Route finder</h3>
+                    <span class="meta">Trace any sensor to the gateway by MAC address or short id (for example 0C)</span>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <input class="field-input" list="topo-macs" placeholder="AA:BB:CC:00:01:0C or 0C"
+                       @bind="Store.TopoSearch" @bind:event="oninput" @onkeydown="OnSearchKey" />
+                <datalist id="topo-macs">
+                    @foreach (var n in mesh.Nodes.Where(n => !n.IsGateway).OrderBy(n => n.Id))
+                    {
+                        <option value="@n.Id">@n.Label · @n.Category</option>
+                    }
+                </datalist>
+                <button type="button" class="btn-primary" @onclick="Trace">Trace route</button>
+            </div>
+
+            @if (Store.TopoRouteError is not null)
+            {
+                <p class="status-message error">@Store.TopoRouteError</p>
+            }
+
+            @if (Store.TopoRoute is { } report)
+            {
+                <div class="topo-route-grid">
+                    <RouteView Title="Power-efficient route (MST)" Route="report.MstRoute" Tone="emerald" Label="Short" />
+                    <RouteView Title="Fewest hops (BFS)" Route="report.FewestHopsRoute" Tone="amber" Label="Short" />
+                </div>
+                @if (report.RoutesDiffer)
+                {
+                    <p class="route-note">
+                        The two routes differ on purpose. The MST picks the set of links that connects the whole mesh for the
+                        least total power, while BFS only counts hops for this one node.
+                    </p>
+                }
+            }
+        </section>
+
+        @if (analysis.Reroutes.Count > 0)
+        {
+            <section class="card">
+                <div class="card-header">
+                    <div>
+                        <h3>Self-healing: where traffic hops now</h3>
+                        <span class="meta">@analysis.Reroutes.Count node(s) whose normal route ran through a down node</span>
+                    </div>
+                </div>
+                <div class="topo-table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>Node</th><th>Was hopping via</th><th>Now hops to</th><th>Route cost</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in analysis.Reroutes)
+                            {
+                                <tr style="cursor: pointer;" @onclick="() => Select(r.Id)">
+                                    <td class="mono">@Short(r.Id)</td>
+                                    <td class="mono">@(r.OldPath.Count > 1 ? Short(r.OldPath[1]) : "—")</td>
+                                    <td class="mono">@(r.NextHop is null ? "—" : Short(r.NextHop))</td>
+                                    <td class="mono">@r.OldCost.ToString("0.0") → @(r.NewCost is double c ? c.ToString("0.0") : "none")</td>
+                                    <td>
+                                        <span class="badge @(r.Stranded ? "badge-rose" : "badge-emerald")">@(r.Stranded ? "Stranded" : "Rerouted")</span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+
+        <section class="card">
+            <div class="card-header">
+                <div>
+                    <h3>Connected subnets (DFS)</h3>
+                    <span class="meta">Working nodes that can still reach each other. A group without the gateway is isolated.</span>
+                </div>
+            </div>
+            <div class="topo-subnets">
+                @foreach (var group in analysis.Subnets)
+                {
+                    <div class="topo-subnet">
+                        <span class="badge @(group.ContainsGateway ? "badge-emerald" : "badge-rose")">
+                            @(group.ContainsGateway ? "Connected to gateway" : "Isolated")
+                        </span>
+                        <span class="meta"> @group.Members.Count node(s)</span>
+                        <div class="route-hops">
+                            @foreach (var member in group.Members)
+                            {
+                                <span class="topo-hop" title="@member">@Short(member)</span>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (analysis.DownNodes.Count > 0)
+                {
+                    <div class="topo-subnet">
+                        <span class="badge badge-info">Down</span>
+                        <span class="meta"> @analysis.DownNodes.Count node(s) not relaying</span>
+                        <div class="route-hops">
+                            @foreach (var member in analysis.DownNodes)
+                            {
+                                <span class="topo-hop" title="@member">@Short(member)</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <TelemetryHistoryPanel />
+        <BenchmarkCard />
     }
 </div>
 
 @code {
-    private readonly CancellationTokenSource _cts = new();
-    private MeshSnapshotDto? _mesh;
-    private Dictionary<string, MeshNodeDto> _byId = new(StringComparer.OrdinalIgnoreCase);
-    private string? _selectedId;
-    private string? _error;
+    private int SensorCount => Math.Max((Store.MeshAnalysis?.NodeCount ?? 1) - 1, 0);
 
-    private int ActiveLinks => _mesh?.Edges.Count(e => e.Active) ?? 0;
-    private MeshNodeDto? Selected => _selectedId is not null && _byId.TryGetValue(_selectedId, out var n) ? n : null;
+    private MeshNodeDto? Selected =>
+        string.IsNullOrEmpty(Store.TopoSelectedMac)
+            ? null
+            : Store.Mesh?.Nodes.FirstOrDefault(n => Same(n.Id, Store.TopoSelectedMac));
+
+    private IReadOnlyList<string>? MstPath =>
+        Store.TopoRoute is { MstRoute.Reachable: true } r ? r.MstRoute.Path : null;
+
+    // Only draw the fewest-hops route separately when it actually differs from the MST route.
+    private IReadOnlyList<string>? HopPath =>
+        Store.TopoRoute is { RoutesDiffer: true, FewestHopsRoute.Reachable: true } r ? r.FewestHopsRoute.Path : null;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadAsync();
-        _ = PollAsync();
+        Store.Changed += OnChanged;
+        await Store.EnsureTopologyAsync();
     }
 
-    private async Task PollAsync()
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private Task Select(string id) => Store.SelectNodeAsync(id);
+    private Task Trace() => Store.TraceAsync(Store.TopoSearch);
+    private Task ToggleWhatIf() => Store.SetWhatIfAsync(!Store.TopoWhatIf);
+    private void ToggleMst() => Store.TopoShowMst = !Store.TopoShowMst;
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
     {
-        var ct = _cts.Token;
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(3), ct);
-                await LoadAsync();
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-        catch (OperationCanceledException) { }
+        if (e.Key == "Enter") await Trace();
     }
 
-    private async Task LoadAsync()
+    private string Short(string id)
     {
-        try
-        {
-            var snapshot = await Api.GetMeshTopologyAsync();
-            if (snapshot is null) return;
-
-            _mesh = snapshot;
-            _byId = snapshot.Nodes.ToDictionary(n => n.Id, StringComparer.OrdinalIgnoreCase);
-            _error = null;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
-        {
-            _error = _mesh is null
-                ? "The mesh is still loading or the API is unreachable. Retrying…"
-                : "Lost contact with the API. Showing the last known state.";
-        }
+        var node = Store.Mesh?.Nodes.FirstOrDefault(n => Same(n.Id, id));
+        return node?.Label ?? id;
     }
-
-    private void Select(string id) => _selectedId = _selectedId == id ? null : id;
-
-    // ---------- selection helpers
-
-    private IEnumerable<MeshEdgeDto> SelectedEdges() =>
-        _mesh is null || _selectedId is null
-            ? Enumerable.Empty<MeshEdgeDto>()
-            : _mesh.Edges.Where(e => Same(e.From, _selectedId) || Same(e.To, _selectedId));
 
     private List<(MeshEdgeDto Edge, MeshNodeDto Other)> SelectedLinks()
     {
         var result = new List<(MeshEdgeDto, MeshNodeDto)>();
-        foreach (var e in SelectedEdges().OrderBy(e => e.Cost))
+        if (Store.Mesh is null || string.IsNullOrEmpty(Store.TopoSelectedMac)) return result;
+
+        var byId = Store.Mesh.Nodes.ToDictionary(n => n.Id, StringComparer.OrdinalIgnoreCase);
+        foreach (var e in Store.Mesh.Edges
+                     .Where(e => Same(e.From, Store.TopoSelectedMac) || Same(e.To, Store.TopoSelectedMac))
+                     .OrderBy(e => e.Cost))
         {
-            var otherId = Same(e.From, _selectedId!) ? e.To : e.From;
-            if (_byId.TryGetValue(otherId, out var other)) result.Add((e, other));
+            var otherId = Same(e.From, Store.TopoSelectedMac) ? e.To : e.From;
+            if (byId.TryGetValue(otherId, out var other)) result.Add((e, other));
         }
         return result;
     }
 
     private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
-
-    // ---------- styling helpers
-
-    private string NodeClass(MeshNodeDto n)
-    {
-        var state = n.IsGateway ? "gw" : n.IsDown ? "down" : n.Status switch
-        {
-            "Critical" => "crit",
-            "Warning" => "warn",
-            _ => "ok"
-        };
-        var selected = _selectedId is not null && Same(n.Id, _selectedId) ? " selected" : "";
-        return $"topo-node {state}{selected}";
-    }
-
-    private string EdgeClass(MeshEdgeDto e)
-    {
-        if (!e.Active) return "topo-edge off";
-        return _selectedId is not null && (Same(e.From, _selectedId) || Same(e.To, _selectedId)) ? "topo-edge sel" : "topo-edge";
-    }
 
     private static string StatusBadge(string status) => status switch
     {
@@ -225,12 +331,5 @@
         _ => "badge-emerald"
     };
 
-    // Invariant culture so coordinates never come out as "46,5" on a machine with a comma decimal separator.
-    private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-
-    public void Dispose()
-    {
-        _cts.Cancel();
-        _cts.Dispose();
-    }
+    public void Dispose() => Store.Changed -= OnChanged;
 }
