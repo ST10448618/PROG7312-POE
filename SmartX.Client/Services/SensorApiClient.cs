@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using SmartX.Client.Models;
+using System.Text.Json;
 
 namespace SmartX.Client.Services;
 
@@ -94,8 +95,68 @@ public Task<HttpResponseMessage> AggregatePowerAsync(double wattsA, double watts
     public Task<List<SensorFileDto>?> GetSensorFilesAsync(string mac, string? category = null) =>
     _http.GetFromJsonAsync<List<SensorFileDto>>($"api/sensors/{mac}/files?category={Uri.EscapeDataString(category ?? "")}");
     
+    // ---------- mesh, routing and history ----------
+
     public Task<MeshSnapshotDto?> GetMeshTopologyAsync() =>
         _http.GetFromJsonAsync<MeshSnapshotDto>("api/mesh/topology");
+
+    public Task<(MeshAnalysisDto? Value, string? Error)> GetMeshAnalysisAsync(IEnumerable<string>? assumeDown = null) =>
+        TryGetAsync<MeshAnalysisDto>("api/mesh/analysis" + AssumeQuery(assumeDown));
+
+    public Task<(RouteReportDto? Value, string? Error)> GetRouteAsync(string mac, IEnumerable<string>? assumeDown = null) =>
+        TryGetAsync<RouteReportDto>($"api/mesh/route/{Uri.EscapeDataString(mac)}" + AssumeQuery(assumeDown));
+
+    public Task<(HistoryResultDto? Value, string? Error)> QueryHistoryAsync(
+        string mac, DateTime fromUtc, DateTime toUtc, int skip, int take, bool descending)
+    {
+        var from = Uri.EscapeDataString(DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc).ToString("o"));
+        var to = Uri.EscapeDataString(DateTime.SpecifyKind(toUtc, DateTimeKind.Utc).ToString("o"));
+        return TryGetAsync<HistoryResultDto>(
+            $"api/history/{Uri.EscapeDataString(mac)}?from={from}&to={to}&skip={skip}&take={take}&order={(descending ? "desc" : "asc")}");
+    }
+
+    public Task<(HistorySummaryDto? Value, string? Error)> GetHistorySummaryAsync(string mac) =>
+        TryGetAsync<HistorySummaryDto>($"api/history/{Uri.EscapeDataString(mac)}/summary");
+
+    public Task<(BenchmarkReportDto? Value, string? Error)> GetBenchmarkAsync(string sizes = "1000,10000,100000") =>
+        TryGetAsync<BenchmarkReportDto>($"api/history/benchmark?sizes={Uri.EscapeDataString(sizes)}");
+
+    private static string AssumeQuery(IEnumerable<string>? ids)
+    {
+        var list = ids?.ToList();
+        return list is null || list.Count == 0 ? "" : "?assumeDown=" + Uri.EscapeDataString(string.Join(",", list));
+    }
+
+    /// <summary>GET that turns failures into a readable message instead of throwing.</summary>
+    private async Task<(T? Value, string? Error)> TryGetAsync<T>(string url) where T : class
+    {
+        try
+        {
+            var response = await _http.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+                return (await response.Content.ReadFromJsonAsync<T>(), null);
+            return (null, await ReadErrorAsync(response));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return (null, "Could not reach the API.");
+        }
+    }
+
+    private static async Task<string> ReadErrorAsync(HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                foreach (var key in new[] { "detail", "message" })
+                    if (doc.RootElement.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String)
+                        return p.GetString()!;
+        }
+        catch (JsonException) { /* not JSON; fall through */ }
+        return $"Request failed ({(int)response.StatusCode}).";
+    }
 
     public Task<InsightsSnapshotDto?> GetInsightsAsync() =>
     _http.GetFromJsonAsync<InsightsSnapshotDto>("api/insights");
