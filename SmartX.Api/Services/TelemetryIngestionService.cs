@@ -21,12 +21,13 @@ public class TelemetryIngestionService
     private readonly TelemetryTimelineService _timeline;
     private readonly ActiveFaultTracker _faultTracker;
     private readonly PredictiveActionEngine _engine;
+    private readonly TelemetryHistoryService _history;
 
     public TelemetryIngestionService(
         AppDbContext db, AnomalyDetectionService anomaly, TelemetryBatchStore batches,
         IHubContext<TelemetryHub> hub, IntegrationDispatchService dispatch, LiveDeviceRegistry registry,
         CommandStreamService commandStream, TelemetryTimelineService timeline,
-        ActiveFaultTracker faultTracker, PredictiveActionEngine engine)
+        ActiveFaultTracker faultTracker, PredictiveActionEngine engine, TelemetryHistoryService history)
     {
         _db = db;
         _anomaly = anomaly;
@@ -38,6 +39,7 @@ public class TelemetryIngestionService
         _timeline = timeline;
         _faultTracker = faultTracker;
         _engine = engine;
+        _history = history;
     }
 
     public async Task<AnomalyResult> IngestAsync<T>(TelemetryPacket<T> packet) where T : struct
@@ -70,6 +72,9 @@ public class TelemetryIngestionService
         });
 
         await _db.SaveChangesAsync();
+
+        // Index the reading by timestamp so range queries on this sensor's history can find it.
+        _history.Add(packet.SensorId, new TelemetryPoint(packet.Timestamp, packet.NumericValue, packet.Unit, log.ValueType));
 
         // Predictive engine learns from every Critical/Warning alert, and tracks readings for trend forecasts.
         if (severity is "Critical" or "Warning")
