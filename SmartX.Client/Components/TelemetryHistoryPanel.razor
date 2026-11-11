@@ -1,0 +1,155 @@
+@using SmartX.Client.Models
+@using SmartX.Client.Services
+@implements IDisposable
+@inject TelemetryStore Store
+
+<section class="card hist-card">
+    <div class="card-header">
+        <div>
+            <h3>Historical telemetry log</h3>
+            <span class="meta">Time-range query on the sensor's self-balancing AVL tree, with no full scan</span>
+        </div>
+        @if (Store.HistSummary is { } summary)
+        {
+            <span class="badge @(summary.IsBalanced ? "badge-emerald" : "badge-rose")">@(summary.IsBalanced ? "AVL balanced" : "AVL unbalanced")</span>
+        }
+    </div>
+
+    <div class="toolbar hist-toolbar">
+        <select class="field-select" value="@Store.HistMac" @onchange="OnSensorChanged">
+            <option value="">Select a sensor…</option>
+            @foreach (var n in SensorNodes)
+            {
+                <option value="@n.Id">@n.Label · @n.Category</option>
+            }
+        </select>
+        <input type="datetime-local" class="field-input hist-dt" value="@Store.HistFrom" @onchange="OnFromChanged" />
+        <input type="datetime-local" class="field-input hist-dt" value="@Store.HistTo" @onchange="OnToChanged" />
+        <button type="button" class="btn-primary" @onclick="RunAsync">Run query</button>
+    </div>
+
+    <div class="hist-presets">
+        <button type="button" class="btn-secondary btn-sm" @onclick="() => Preset(TimeSpan.FromHours(1))">Last hour</button>
+        <button type="button" class="btn-secondary btn-sm" @onclick="() => Preset(TimeSpan.FromHours(6))">Last 6 hours</button>
+        <button type="button" class="btn-secondary btn-sm" @onclick="() => Preset(TimeSpan.FromHours(24))">Last 24 hours</button>
+        <button type="button" class="btn-secondary btn-sm" @onclick="() => Preset(TimeSpan.FromDays(7))">Last 7 days</button>
+        <button type="button" class="btn-secondary btn-sm" @onclick="ToggleOrderAsync">@(Store.HistDescending ? "Newest first" : "Oldest first")</button>
+    </div>
+
+    @if (Store.HistError is not null)
+    {
+        <p class="status-message error">@Store.HistError</p>
+    }
+
+    @if (Store.HistResult is { } r)
+    {
+        <div class="hist-stats">
+            <div><span class="stat-label">Readings in range</span><span class="hist-stat mono">@r.Total.ToString("N0")</span></div>
+            <div><span class="stat-label">Min</span><span class="hist-stat mono">@(r.Min?.ToString("0.0") ?? "—")</span></div>
+            <div><span class="stat-label">Max</span><span class="hist-stat mono">@(r.Max?.ToString("0.0") ?? "—")</span></div>
+            <div><span class="stat-label">Average</span><span class="hist-stat mono">@(r.Average?.ToString("0.0") ?? "—")</span></div>
+            <div><span class="stat-label">Query time</span><span class="hist-stat mono bench-good">@FormatMicros(r.ElapsedMicroseconds)</span></div>
+            <div><span class="stat-label">AVL tree</span><span class="hist-stat mono">@TreeLine(r)</span></div>
+        </div>
+
+        @if (r.Total == 0)
+        {
+            <p class="empty-state">No readings in this range. Try a wider window.</p>
+        }
+        else
+        {
+            <div class="hist-table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Time</th><th>Value</th><th>Unit</th><th>Type</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in r.Points)
+                        {
+                            <tr>
+                                <td class="mono">@(p.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"))</td>
+                                <td class="mono">@(p.Value.ToString("0.0"))</td>
+                                <td>@p.Unit</td>
+                                <td>@p.ValueType</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="hist-pager">
+                <span>Showing @(r.Skip + 1)–@(r.Skip + r.Points.Count) of @r.Total.ToString("N0")</span>
+                <span>
+                    <button type="button" class="btn-secondary btn-sm" disabled="@(!HasPrev)" @onclick="PrevAsync">Previous</button>
+                    <button type="button" class="btn-secondary btn-sm" disabled="@(!HasNext(r))" @onclick="NextAsync">Next</button>
+                </span>
+            </div>
+        }
+    }
+    else if (Store.HistError is null)
+    {
+        <p class="empty-state">Select a node on the map, or choose a sensor above, to see its history.</p>
+    }
+</section>
+
+@code {
+    private IEnumerable<MeshNodeDto> SensorNodes =>
+        Store.Mesh is null
+            ? Enumerable.Empty<MeshNodeDto>()
+            : Store.Mesh.Nodes.Where(n => !n.IsGateway).OrderBy(n => n.Id);
+
+    private bool HasPrev => Store.HistPage > 0;
+    private static bool HasNext(HistoryResultDto r) => r.Skip + r.Points.Count < r.Total;
+
+    protected override void OnInitialized() => Store.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Store.Changed -= OnChanged;
+
+    private async Task OnSensorChanged(ChangeEventArgs e)
+    {
+        Store.HistMac = e.Value?.ToString() ?? "";
+        Store.HistPage = 0;
+        await Store.RunHistoryQueryAsync();
+    }
+
+    private void OnFromChanged(ChangeEventArgs e) => Store.HistFrom = e.Value?.ToString() ?? "";
+    private void OnToChanged(ChangeEventArgs e) => Store.HistTo = e.Value?.ToString() ?? "";
+
+    private async Task RunAsync()
+    {
+        Store.HistPage = 0;
+        await Store.RunHistoryQueryAsync();
+    }
+
+    private Task Preset(TimeSpan span) => Store.SetHistoryRangeAsync(span);
+
+    private async Task ToggleOrderAsync()
+    {
+        Store.HistDescending = !Store.HistDescending;
+        Store.HistPage = 0;
+        await Store.RunHistoryQueryAsync();
+    }
+
+    private async Task PrevAsync()
+    {
+        if (Store.HistPage > 0) Store.HistPage--;
+        await Store.RunHistoryQueryAsync();
+    }
+
+    private async Task NextAsync()
+    {
+        Store.HistPage++;
+        await Store.RunHistoryQueryAsync();
+    }
+
+    private static string FormatMicros(double micros) =>
+        micros >= 1000 ? $"{micros / 1000:0.00} ms" : $"{micros:0.0} µs";
+
+    private string TreeLine(HistoryResultDto r)
+    {
+        var min = Store.HistSummary?.MinimumPossibleHeight;
+        return min is int m
+            ? $"{r.TreeSize:N0} nodes · height {r.TreeHeight} (min {m})"
+            : $"{r.TreeSize:N0} nodes · height {r.TreeHeight}";
+    }
+}
