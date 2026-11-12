@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Compile the whole solution (API + Blazor client + tests) and run the unit tests.
+  # ---------------------------------------------------------------------------
+  build-and-test:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore SmartX.slnx
+
+      - name: Build (Release)
+        run: dotnet build SmartX.slnx --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: >
+          dotnet test SmartX.Tests/SmartX.Tests.csproj
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --collect:"XPlat Code Coverage"
+          --results-directory TestResults
+
+      - name: Upload test results and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # 2. Boot the real docker compose stack and exercise the three pillars over HTTP.
+  #    This is the same command a marker runs, so a green tick here means it works from a clean clone.
+  # ---------------------------------------------------------------------------
+  docker-smoke-test:
+    name: Docker stack smoke test
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Build and start the stack
+        run: docker compose up --build --detach
+
+      - name: Wait for the API to report healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5000/health > /dev/null; then
+              echo "API healthy after $i attempt(s)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "The API never became healthy."
+          exit 1
+
+      - name: Swagger documents the mesh and history endpoints
+        run: |
+          curl -fsS http://localhost:5000/swagger/v1/swagger.json -o swagger.json
+          jq -e '.paths | has("/api/mesh/topology") and has("/api/mesh/analysis") and has("/api/history/benchmark")' swagger.json
+
+      - name: Pillar 3a - mesh graph is loaded
+        run: |
+          code=000
+          for i in $(seq 1 30); do
+            code=$(curl -s -o topology.json -w '%{http_code}' http://localhost:5000/api/mesh/topology)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          test "$code" = "200"
+          jq -e '.nodeCount == 13 and .edgeCount == 23' topology.json
+
+      - name: Pillar 3b - MST, BFS and DFS analysis is consistent
+        run: |
+          curl -fsS http://localhost:5000/api/mesh/analysis -o analysis.json
+          # Every sensor is exactly one of: reachable, down, or stranded. A healthy mesh costs 29.6 to span.
+          jq -e '.nodeCount == 13' analysis.json
+          jq -e '(.reachableCount + (.downNodes | length) + (.stranded | length)) == 12' analysis.json
+          jq -e 'if (.downNodes | length) == 0 then .mst.totalCost == 29.6 else (.mst.edges | length) >= 1 end' analysis.json
+
+      - name: Pillar 3c - route tracking by MAC
+        run: |
+          curl -fsS http://localhost:5000/api/mesh/route/AA:BB:CC:00:01:05 -o route.json
+          jq -e '.id == "AA:BB:CC:00:01:05"' route.json
+          # What-if: a failed gateway neighbour must not break the analysis endpoint.
+          curl -fsS "http://localhost:5000/api/mesh/analysis?assumeDown=AA:BB:CC:00:01:05" -o whatif.json
+          jq -e '.downNodes | index("AA:BB:CC:00:01:05") != null' whatif.json
+
+      - name: Pillar 3d - history is warmed into balanced AVL trees
+        run: |
+          mac=AA:BB:CC:00:01:01
+          code=000
+          for i in $(seq 1 60); do
+            code=$(curl -s -o summary.json -w '%{http_code}' "http://localhost:5000/api/history/$mac/summary")
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+          jq -e '.count > 1000 and .isBalanced == true' summary.json
+          curl -fsS "http://localhost:5000/api/history/$mac?take=5" -o window.json
+          jq -e '(.points | length) > 0' window.json
+
+      - name: AVL beats a linear scan and returns identical results
+        run: |
+          curl -fsS "http://localhost:5000/api/history/benchmark?sizes=1000,10000&queries=100" -o benchmark.json
+          jq -e '.rows | all(.resultsMatch == true)' benchmark.json
+          jq -e '.rows[-1].speedup > 1' benchmark.json
+
+      - name: Pillars 1 and 2 still respond
+        run: |
+          curl -fsS http://localhost:5000/api/sensors | jq -e 'length >= 12'
+          curl -fsS http://localhost:5000/api/commands/queues > /dev/null
+          curl -fsS http://localhost:5000/api/insights | jq -e 'has("suggestions") and has("insights")'
+          curl -fsS http://localhost:5000/api/anomalies > /dev/null
+
+      - name: SignalR hub negotiates
+        run: |
+          curl -fsS -X POST "http://localhost:5000/hubs/telemetry/negotiate?negotiateVersion=1" | jq -e '.connectionId'
+
+      - name: Client serves the SPA, including deep links
+        run: |
+          curl -fsS http://localhost:8081/ | grep -q "SmartX.Client"
+          curl -fsS http://localhost:8081/topology | grep -q "SmartX.Client"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
