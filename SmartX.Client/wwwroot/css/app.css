@@ -879,3 +879,10 @@ input[type="file"]::file-selector-button:hover { background: var(--panel); }
     .topo-node { width: 32px; height: 32px; font-size: 0.62rem; }
     .topo-node.gw { width: 42px; height: 42px; }
 }
+
+.topo-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+}

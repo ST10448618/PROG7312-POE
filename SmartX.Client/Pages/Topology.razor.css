@@ -1,0 +1,105 @@
+.topo-page { display: flex; flex-direction: column; gap: 1.25rem; }
+.topo-page .page-header { margin-bottom: 0; }
+.topo-page .stat-grid { margin-bottom: 0; }
+
+.topo-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; align-items: start; }
+
+.topo-map-card, .topo-detail-card { color: var(--text); min-width: 0; }
+.topo-map-card h3, .topo-detail-card h3 { color: var(--text); }
+
+.topo-canvas {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    min-height: 340px;
+    margin-top: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.topo-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.topo-edge { stroke: #52525b; stroke-width: 1.5px; fill: none; }
+.topo-edge.sel { stroke: var(--info); stroke-width: 2.5px; }
+.topo-edge.off { stroke: #3f3f46; stroke-width: 1.5px; stroke-dasharray: 5 5; opacity: 0.6; }
+
+.topo-node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid var(--emerald);
+    background: var(--emerald-bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: box-shadow 0.15s, transform 0.15s;
+}
+.topo-node:hover { transform: translate(-50%, -50%) scale(1.1); }
+.topo-node.warn { border-color: var(--amber); background: var(--amber-bg); }
+.topo-node.crit { border-color: var(--rose); background: var(--rose-bg); }
+.topo-node.down { border-color: var(--info); background: var(--info-bg); border-style: dashed; opacity: 0.85; }
+.topo-node.gw { width: 52px; height: 52px; border-color: #a1a1aa; background: #27272a; }
+.topo-node.selected { box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.35); }
+
+.topo-cost {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: var(--panel);
+    border: 1px solid var(--info-border);
+    color: var(--info);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    pointer-events: none;
+}
+
+.topo-legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; font-size: 0.78rem; color: var(--text-dim); }
+.topo-legend-item { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-dim); }
+.topo-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--emerald); background: var(--emerald-bg); display: inline-block; }
+.topo-dot.warn { border-color: var(--amber); background: var(--amber-bg); }
+.topo-dot.crit { border-color: var(--rose); background: var(--rose-bg); }
+.topo-dot.down { border-color: var(--info); background: var(--info-bg); border-style: dashed; }
+.topo-dot.gw { border-color: #a1a1aa; background: #27272a; }
+.topo-line-key { width: 22px; height: 0; border-top: 2px solid #52525b; display: inline-block; }
+.topo-line-key.off { border-top-style: dashed; border-top-color: #71717a; }
+
+.topo-mac { margin: 0.5rem 0 1rem; color: var(--text-dim); font-size: 0.8rem; }
+.topo-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem 1rem; }
+.topo-facts > div { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.topo-fact { color: var(--text); font-size: 0.88rem; overflow-wrap: anywhere; }
+
+.topo-links-title { margin: 1.25rem 0 0.5rem; }
+.topo-links { display: flex; flex-direction: column; gap: 0.4rem; max-height: 280px; overflow-y: auto; }
+.topo-link-row {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr auto auto;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.82rem;
+    text-align: left;
+    cursor: pointer;
+}
+.topo-link-row:hover { border-color: var(--text-faint); }
+.topo-link-name { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-link-cost { color: var(--info); }
+
+@media (max-width: 900px) {
+    .topo-layout { grid-template-columns: 1fr; }
+    .topo-canvas { min-height: 300px; }
+    .topo-node { width: 32px; height: 32px; font-size: 0.62rem; }
+    .topo-node.gw { width: 42px; height: 42px; }
+}

@@ -89,10 +89,6 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU3lzdGVtSGVhbHRoLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/perez/VSCodeProjects/SmartX/SmartX.Client/Pages/Topology.razor]
-build_metadata.AdditionalFiles.TargetPath = UGFnZXNcVG9wb2xvZ3kucmF6b3I=
-build_metadata.AdditionalFiles.CssScope = 
-
 [C:/Users/perez/VSCodeProjects/SmartX/SmartX.Client/_Imports.razor]
 build_metadata.AdditionalFiles.TargetPath = X0ltcG9ydHMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
@@ -100,3 +96,7 @@ build_metadata.AdditionalFiles.CssScope =
 [C:/Users/perez/VSCodeProjects/SmartX/SmartX.Client/Layout/MainLayout.razor]
 build_metadata.AdditionalFiles.TargetPath = TGF5b3V0XE1haW5MYXlvdXQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = b-qaqyvyrtn7
+
+[C:/Users/perez/VSCodeProjects/SmartX/SmartX.Client/Pages/Topology.razor]
+build_metadata.AdditionalFiles.TargetPath = UGFnZXNcVG9wb2xvZ3kucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = b-lu35r6dna9
