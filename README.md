@@ -2,10 +2,10 @@
 
 **PROG7312 | Programming 3B: Advanced Application Development**
 
-Student: Perez Seth Roy   
+Student: Perez Seth Roy  
 Student Number: ST10448618
 
-Part 2 Demonstration: https://youtu.be/9q6JV7I7YR4
+<a href="https://youtu.be/u8mSVr7E8Mk"><img src="https://cdn.simpleicons.org/youtube/FF0000" height="16" alt="YouTube" /></a> [Final POE Demo](https://youtu.be/u8mSVr7E8Mk)
 
 ---
 
@@ -17,525 +17,522 @@ Part 2 Demonstration: https://youtu.be/9q6JV7I7YR4
 4. [Technology Stack](#4-technology-stack)
 5. [Getting Started](#5-getting-started)
 6. [Using the Application](#6-using-the-application)
-7. [Part 2 Testing Guide](#7-part-2-testing-guide)
-8. [Part 1 Verification](#8-part-1-verification)
-9. [API Reference](#9-api-reference)
-10. [Real-Time Communication](#10-real-time-communication)
-11. [Data Structures and Implementation](#11-data-structures-and-implementation)
-12. [Project Structure](#12-project-structure)
+7. [API Reference](#7-api-reference)
+8. [Real-Time Communication](#8-real-time-communication)
+9. [Data Structures and Implementation](#9-data-structures-and-implementation)
+10. [Part 3 Implementation Report](#10-part-3-implementation-report)
+11. [Performance and Scaling](#11-performance-and-scaling)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Project Structure](#13-project-structure)
 
 ---
 
 ## 1. Project Overview
 
-Smart-X is an IoT mesh telemetry gateway and monitoring application designed to simulate the management of distributed sensor networks, such as those used in hydroponic farming, smart-grid installations and utility monitoring.
+Smart-X is an IoT mesh telemetry gateway and monitoring application. It simulates the management of distributed sensor networks, such as hydroponic farming, smart-grid installations and utility monitoring.
 
-The application receives telemetry from simulated devices, validates and stores incoming readings, detects anomalies, manages device states and provides operators with a real-time monitoring dashboard.
-
-The project demonstrates the practical application of object-oriented programming, generic types, custom collections, algorithmic processing, database persistence, REST APIs and real-time communication.
+The application receives telemetry from simulated devices, validates and stores readings, detects anomalies, manages device state and gives operators a real-time dashboard. Part 3 adds the network itself. The ESP32 mesh is modelled as a weighted graph, and the system finds the lowest-power routing tree. It reroutes around failed nodes and answers historical queries quickly using a balanced tree.
 
 ### Project scope
 
 | Component | Description |
 |---|---|
 | Part 1 | Telemetry ingestion, validation, storage, anomaly detection and supporting programming concepts. |
-| Part 2 | Real-time processing, device management, command queues, fault tracking, command history and predictive action suggestions. |
-| Final PoE | Planned network topology, graph traversal and mesh-routing functionality. |
+| Part 2 | Real-time processing, device management, command queues, fault tracking, command history and predictive suggestions. |
+| Part 3 | Self-balancing AVL tree for historical telemetry queries, mesh graph, BFS, DFS, Prim's minimum spanning tree, what-if outage analysis, benchmarks, automated tests and CI. |
 
-The system uses simulated devices and telemetry rather than physical IoT hardware.
+The system uses simulated devices and telemetry rather than physical hardware.
 
 ## 2. Features
 
 ### 2.1 Part 1 — Telemetry Ingestion and Validation
 
-- **Sensor management:** Register, edit and delete devices using their MAC addresses, deployment locations and categories.
-- **Generic telemetry processing:** Use `TelemetryPacket<T>` to support different data types, including floating-point, integer and Boolean readings.
-- **Operator overloading:** The `PowerReading` class overloads arithmetic, comparison and equality operators.
-- **Batch processing:** Store telemetry batches using jagged arrays and convert them into collections for processing.
-- **Recursive deployment validation:** Validate nested facility paths of arbitrary depth.
-- **Encrypted file storage:** Encrypt uploaded configuration files, photographs and logs using AES encryption.
-- **Custom ring buffer:** Maintain a fixed-capacity rolling window for anomaly detection.
-- **Anomaly detection:** Classify readings as Normal, Warning, Critical or Disconnected using a rolling statistical baseline.
+- **Sensor management:** Register, edit and delete devices using MAC addresses, locations and categories.
+- **Generic telemetry processing:** `TelemetryPacket<T>` supports floating-point, integer and Boolean readings.
+- **Operator overloading:** `PowerReading` overloads arithmetic, comparison and equality operators.
+- **Batch processing:** Telemetry batches are stored in jagged arrays and converted into collections.
+- **Recursive deployment validation:** Nested facility paths of any depth are validated.
+- **Encrypted file storage:** Uploaded files are protected with AES encryption.
+- **Custom ring buffer:** A fixed-capacity rolling window feeds anomaly detection.
+- **Anomaly detection:** Readings are classified as Normal, Warning, Critical or Disconnected.
 - **Anomaly logs:** View, filter and acknowledge recorded anomalies.
 - **Webhook integrations:** Configure notification endpoints and test connectivity.
 - **System health monitoring:** Inspect application health, database connectivity and device statistics.
 
 ### 2.2 Part 2 — Real-Time Processing and Device Management
 
-- **Command Stream:** Monitor processing queues, priority alerts, commands, faults, history and device registry information.
-- **FIFO queue:** Process standard telemetry using `Queue<T>`.
-- **Priority queue:** Prioritise Warning and Critical telemetry using `PriorityQueue<TElement, TPriority>`.
-- **Command undo:** Store manual commands in `Stack<T>` and support last-in, first-out undo operations.
-- **Live device registry:** Maintain device state for efficient lookup and updates by MAC address.
-- **Historical timeline:** Organise telemetry by timestamp using `SortedDictionary<TKey, TValue>`.
-- **Fault tracking:** Use `HashSet<T>` to prevent duplicate entries for disconnected devices.
-- **Predictive Action Engine:** Learn associations between alerts and operator actions to generate ranked suggestions.
-- **Automated Insights:** Identify disconnected devices, abnormal readings, inactive sensors and queue backlogs.
-- **Search and filtering:** Filter the device registry by text, category and operational state.
-- **Shared client state:** Preserve relevant interface state and maintain a shared SignalR connection when navigating between pages.
-- **Live Home dashboard:** Display sensor statistics and a time-series chart with selectable sensor lines.
-- **Telemetry Overview:** Present active alerts, device statistics and a sensor anomaly heat map.
+- **Command Stream:** Queues, priority alerts, commands, faults, history and device registry.
+- **FIFO queue** (`Queue<T>`) for standard telemetry.
+- **Priority queue** (`PriorityQueue<TElement, TPriority>`) for Warning and Critical telemetry.
+- **Command undo** using `Stack<T>`, restoring the device's previous actuator state.
+- **Live device registry** with efficient lookup by MAC address.
+- **Historical timeline** using `SortedDictionary<TKey, TValue>`.
+- **Fault tracking** using `HashSet<T>`.
+- **Predictive Action Engine** with recency decay, repeat-offender detection and trend forecasting.
+- **Automated Insights** for disconnected devices, abnormal readings, inactive sensors and backlogs.
+- **Shared client state:** one SignalR connection and one store shared across pages.
+
+### 2.3 Part 3 — Topology, Graphs and Historical Queries
+
+- **Network Topology page** with an interactive mesh map: 12 sensors and 1 gateway.
+- **Mesh graph** as a weighted, undirected adjacency list.
+- **Breadth-first search** for the fewest-hops route from every node to the gateway.
+- **Depth-first search** to find subnets, meaning islands cut off from the gateway.
+- **Prim's algorithm** with a custom min-heap, producing the minimum spanning tree (the most power-efficient routing tree).
+- **Route tracing** comparing the MST route against the fewest-hops route for any node.
+- **What-if mode:** simulate outages without touching devices or the database, and see which nodes reroute and which are stranded.
+- **Live mesh health:** a background monitor pushes changes over SignalR.
+- **AVL-tree telemetry history:** time-range queries per sensor in O(log n + k).
+- **Live benchmark:** AVL tree against a linear scan, with an unbalanced BST height for comparison.
+- **136 automated unit tests** and a GitHub Actions pipeline with a Docker smoke test.
 
 ## 3. System Architecture
 
-Smart-X uses a client-server architecture consisting of an ASP.NET Core API, a Blazor WebAssembly client and a PostgreSQL database.
-
-### Main components
-
 | Component | Responsibility |
 |---|---|
-| SmartX.Api | Exposes REST endpoints, processes telemetry, manages device state and coordinates services. |
-| SmartX.Client | Provides the user interface, dashboard, device management pages and real-time monitoring. |
-| PostgreSQL | Stores durable records, including devices, telemetry logs, anomaly logs, integrations and file metadata. |
-| SignalR | Pushes telemetry and state changes to connected clients. |
-| Background services | Simulate telemetry and process queued events. |
-| Anomaly engine | Scores readings against a rolling statistical baseline. |
-| Predictive engine | Learns action patterns and produces suggestions and automated insights. |
+| SmartX.Api | REST endpoints, telemetry processing, device state, mesh analysis and history. |
+| SmartX.Client | Blazor WebAssembly user interface. |
+| PostgreSQL | Durable records: devices, telemetry, anomalies, integrations and file metadata. |
+| SignalR | Pushes telemetry, queue, fault and mesh changes to clients. |
+| Background services | Simulation, queue processing, mesh health monitoring and history warm-up. |
+| SmartX.Tests | xUnit test project for collections, graph algorithms and services. |
 
 ### Data flow
 
 1. Simulated devices generate telemetry.
-2. The API receives and validates incoming readings.
-3. Valid readings are stored and evaluated by the anomaly detection engine.
-4. Readings are directed into the appropriate processing queue.
-5. Background services process queued items and update device state.
-6. The API publishes relevant changes through SignalR.
-7. The Blazor client updates its dashboard, alerts, charts and device registry.
+2. The API validates readings, stores them and scores them for anomalies.
+3. Readings enter the FIFO or priority queue and are processed by an event-driven background service.
+4. Each reading is also added to that sensor's AVL tree for historical queries.
+5. `MeshHealthMonitor` checks node health every 2 seconds and pushes `MeshHealthChanged` when it changes.
+6. `MeshAnalysisService` rebuilds the BFS, DFS and MST results from the current mesh state.
+7. The Blazor client updates the dashboard, topology map and history panel.
 
-The API and client are separate deployables. Each maintains its own models, allowing the two applications to be built and deployed independently.
-
-PostgreSQL stores durable application records, while several Part 2 processing structures operate in memory and are rebuilt when the API restarts.
+The API and client keep separate models so they can be built and deployed independently. Part 2 and Part 3 structures are held in memory and rebuilt on API restart (history takes about 12–14 s to warm up).
 
 ## 4. Technology Stack
 
 | Layer | Technology |
 |---|---|
-| Backend | C#, .NET 10 and ASP.NET Core Minimal APIs |
+| Backend | C#, .NET 10, ASP.NET Core Minimal APIs |
 | Frontend | Blazor WebAssembly and Razor components |
 | Database | PostgreSQL 16 |
 | Data access | Entity Framework Core with Npgsql |
-| Real-time communication | SignalR |
+| Real-time | SignalR |
 | API documentation | Swagger / OpenAPI |
 | Logging | Serilog |
 | File security | AES encryption |
-| Deployment | Docker, Docker Compose and Nginx |
-| Visualisation | SVG-based telemetry chart and CSS dashboard components |
+| Testing | xUnit 2.9.3 |
+| CI | GitHub Actions, Dependabot |
+| Deployment | Docker, Docker Compose, Nginx |
+| Visualisation | SVG chart and mesh map, plain CSS design system |
 
 ## 5. Getting Started
 
 ### Prerequisites
 
-Install the following:
-
 - Docker Desktop, including Docker Compose.
 - Git.
 
-A local .NET SDK, Node.js installation or PostgreSQL installation is not required when running the application through Docker Compose.
+A local .NET SDK is **not** needed to run the application. It is only needed to run the unit tests outside Docker (.NET 10 SDK).
 
 ### Clone and run
 
-Replace the repository URL with the actual repository URL before using these commands.
-
 ```bash
-git clone <repository-url>
-cd SmartX
+git clone https://github.com/ST10448618/PROG7312---POE.git
+cd PROG7312---POE
 docker compose up --build
 ```
 
-Wait for the database, API and client containers to start.
+Wait for the database, API and client containers to start. After the API starts, give it roughly 15 seconds to warm up the history trees before using the Topology history panel.
 
 ### Application URLs
 
 | Service | URL |
 |---|---|
 | Client application | http://localhost:8081 |
+| Topology page | http://localhost:8081/topology |
 | API documentation | http://localhost:5000/swagger |
 | API health check | http://localhost:5000/health |
 | PostgreSQL | localhost:5432 |
 
-The development database configuration is:
-
-| Setting | Value |
-|---|---|
-| Database | `smartx` |
-| Username | `smartx` |
-| Password | `smartx_dev` |
-
-These credentials are for local development only.
+Development database: database `smartx`, user `smartx`, password `smartx_dev`. These are for local development only.
 
 ### Initialisation
 
-On the first successful startup:
+On the first successful start:
 
 1. PostgreSQL starts and passes its health check.
-2. The API applies Entity Framework Core migrations.
-3. The application seeds demonstration sensors if the database is empty.
-4. Background services begin generating simulated telemetry and processing queued items.
-5. The pattern history seeder loads demonstration operator behaviour for the predictive engine.
-
-### Demonstration sensors
-
-| MAC address | Category | Deployment location |
-|---|---|---|
-| `AA:BB:CC:00:01:01` | Environmental | Facility A/Zone 1/Sub-Zone B/Rack 1 |
-| `AA:BB:CC:00:01:02` | Power Consumption | Facility A/Zone 1/Sub-Zone C |
-| `AA:BB:CC:00:01:03` | Actuator | Facility A/Zone 1/Sub-Zone B/Rack 1 |
+2. The API applies EF Core migrations.
+3. `MockTelemetrySeeder` seeds the demonstration sensors.
+4. `MeshTopologySeeder` creates the 12 mesh sensors and the gateway (this runs after the first seeder).
+5. `TelemetryHistoryBuilder` seeds **96,768 historical readings** (12 sensors × 8,064 readings, 7 days at 75-second intervals) and loads them into per-sensor AVL trees.
+6. Background services start generating live telemetry and processing queues.
+7. `PatternHistorySeeder` loads demonstration operator behaviour for the predictive engine.
 
 ### Stopping and resetting
 
-Stop the containers while preserving the database:
-
 ```bash
-docker compose down
+docker compose down            # keep the database
+docker compose down -v         # delete the database volume
 ```
 
-Stop the containers and delete the database volume:
+**Important:** `down -v` deletes persisted data. For a fully clean rebuild use:
 
 ```bash
-docker compose down -v
+docker compose down -v && docker compose up --build
 ```
-
-**Important:** The second command deletes persisted database data. Use it only when a clean reset is required, such as when testing database migrations against a fresh database.
 
 ## 6. Using the Application
 
 | Page | Route | Functionality |
 |---|---|---|
-| Home | `/` | Live statistics, uptime, telemetry counts and a sensor readings chart. Sensor chips toggle individual chart lines. |
-| Telemetry Overview | `/dashboard` | Device statistics, active critical alerts and an interactive anomaly heat map. |
-| Command Stream | `/command-stream` | Queue depths, command issuing, undo history, device faults, historical timeline, searchable device registry and predictive suggestions. |
-| Anomaly Logs | `/anomalies` | Search and filter scored readings by sensor and severity; acknowledge anomalies. |
-| Data Ingestion | `/ingestion` | Manage devices, upload encrypted attachments, trigger test telemetry, calculate power aggregates and validate deployment paths. |
-| Integrations | `/integrations` | Register webhook endpoints, test connectivity and manage integrations. |
-| System Health | `/health` | Inspect system uptime, database connectivity, device counts and incident history. |
-| Topology | Not implemented | Reserved for future mesh-routing functionality. |
-
-### Home dashboard
-
-The Home page provides a summary of the system's current state.
-
-- The statistic cards refresh every 10 seconds.
-- Sensor chips show or hide individual chart lines.
-- Sensor colours remain consistent when other sensors are hidden.
-- Focus 0–100 mode emphasises the normal operating range.
-- Full range mode expands the chart to accommodate extreme readings.
-- Warning and Critical markers highlight anomalous readings.
-- Highest reading, lowest reading and total plotted readings are displayed beneath the chart.
-
-### Telemetry Overview
-
-The Overview page presents four statistic cards, an active alerts section and the anomaly heat map.
-
-Select a heat-map cell or an alert's Inspect button to open the sensor inspector. The inspector provides:
-
-- **Real-time:** Latest readings, anomaly state and recent history.
-- **Network:** Device location, category, connection status and last-seen time.
-- **Actions:** Contextual guidance based on the device's current state.
-
-### Command Stream
-
-The Command Stream page combines real-time processing and device management.
-
-Use the device registry to inspect current values and states. Issue supported commands, undo recent commands, review the historical timeline and investigate active faults.
-
-The predictive section provides ranked Suggested Actions and Automated Insights when the relevant conditions are met.
-
-## 7. Part 2 Testing Guide
-
-This section provides repeatable demonstrations of the primary Part 2 requirements.
-
-Before testing, start the application and open the client and API documentation.
-
-### 7.1 Normal telemetry
-
-1. Navigate to Data Ingestion.
-2. Select a device and trigger a Normal reading.
-3. Open Command Stream.
-4. Inspect the standard queue, registry and latest device value.
-
-**Expected result:** The reading is processed as normal telemetry, and the relevant device and queue state is updated.
-
-### 7.2 Critical and Warning telemetry
-
-1. Open Data Ingestion.
-2. Select a device.
-3. Trigger a Spike or Drop.
-4. Inspect the anomaly logs, queue counters and device state.
-5. Return to the Home page to inspect the chart.
-
-**Expected result:** The reading is scored, an anomaly is recorded when the detection threshold is met, and the appropriate processing queue receives the event.
-
-The rolling baseline adapts to repeated readings. If a spike does not produce a Critical alert, try another device or allow the baseline to recover before repeating the test.
-
-### 7.3 Priority queue and FIFO queue
-
-1. Generate several abnormal readings.
-2. Generate multiple normal readings.
-3. Open Command Stream and monitor the queue counters.
-4. Query `/api/commands/queues` to inspect the current queue depths.
-
-**Expected result:** Warning and Critical events are assigned priority processing, while normal events use the standard FIFO queue. The background processor drains pending items.
-
-Queue depths can change quickly because the background processor runs continuously. A short burst of events is more effective than sending one reading at a time.
-
-### 7.4 Dictionary-based device registry
-
-1. Trigger a reading with a distinctive value for a registered sensor.
-2. Open the live device registry.
-3. Inspect the sensor's latest value, status and last-seen information.
-
-**Expected result:** The registry reflects the latest device state through a lookup keyed by MAC address.
-
-### 7.5 SortedDictionary historical timeline
-
-1. Open Command Stream.
-2. Navigate to Historical Timeline.
-3. Refresh the timeline after generating several readings.
-4. Compare the timestamps and ordering.
-
-**Expected result:** Historical readings are presented in timestamp order, with the newest entries displayed first in the interface.
-
-The in-memory timeline is configured to retain a bounded history of recent time buckets.
-
-### 7.6 HashSet fault tracking
-
-1. Select a sensor and trigger Disconnect.
-2. Inspect Active Faults.
-3. Trigger Disconnect again for the same sensor.
-4. Send a new reading to the device.
-
-**Expected result:** The device is represented once in the active fault set. A subsequent valid reading should clear the fault when the recovery logic runs.
-
-### 7.7 Stack-based command undo
-
-1. Open Command Stream.
-2. Issue three different supported commands.
-3. Review Command History.
-4. Select Undo last command repeatedly.
-
-**Expected result:** Undo operations follow last-in, first-out order, removing the most recent command from the in-memory command history according to the implementation.
-
-Commands simulate device actions; they do not operate physical hardware.
-
-### 7.8 Device registry search and filters
-
-1. Open Command Stream.
-2. Search for a known MAC address or part of a device identifier.
-3. Apply the available category and operational-state filters.
-4. Change the search query and repeat.
-
-**Expected result:** The registry narrows to matching devices. Committed searches can contribute to the predictive engine's learned patterns.
-
-### 7.9 Predictive Action Engine
-
-The engine uses recent alerts and previously observed operator behaviour to produce suggestions. A matching pattern must meet the implementation's minimum observation threshold before it is suggested.
-
-**Demonstration A — Seeded command pattern**
-
-1. Generate a Spike on `AA:BB:CC:00:01:01`.
-2. Open Suggested Actions.
-3. Inspect the suggested action targeting `AA:BB:CC:00:01:03`.
-4. Review its confidence and explanatory text.
-5. Use Run if the suggestion is available.
-
-**Demonstration B — Seeded search pattern**
-
-1. Generate a Disconnect for `AA:BB:CC:00:01:02`.
-2. Open Suggested Actions.
-3. Look for a suggestion to filter Power Consumption devices by Faulted status.
-4. Select Apply filter if available.
-
-**Demonstration C — Learned operator behaviour**
-
-1. Generate a Spike on `AA:BB:CC:00:01:03`.
-2. Issue Shutdown Valve for `AA:BB:CC:00:01:01` on two separate occasions.
-3. Generate the matching alert again if necessary.
-4. Inspect the resulting suggestions.
-
-**Expected result:** The engine can learn repeated associations between alerts and operator actions and rank qualifying suggestions. Exact results depend on the implementation's alert window, recorded history and current in-memory state.
-
-### 7.10 Automated Insights
-
-Generate or wait for one of the following conditions:
-
-- A disconnected device.
-- A reading outside the configured operating range.
-- A device that has stopped reporting.
-- A backlog in the priority queue.
-
-Open Automated Insights and inspect the resulting explanations.
-
-**Expected result:** The engine identifies applicable conditions and displays relevant operational guidance.
-
-### 7.11 Home chart interactions
-
-1. Open Home.
-2. Generate normal and abnormal readings.
-3. Click a sensor chip to hide its line.
-4. Click it again to restore the line.
-5. Switch between Focus 0–100 and Full range.
-6. Hover over highlighted markers.
-7. Navigate to another page and return to Home.
-
-**Expected result:** Sensor lines can be toggled, chart modes change the visible range, markers expose reading details, and sensor visibility preferences remain in the shared client store during navigation.
-
-### 7.12 Anomaly Logs search
-
-1. Open Anomaly Logs.
-2. Enter a sensor identifier in the search field.
-3. Press Enter to apply the search.
-4. Change the severity dropdown.
-5. Confirm that the results update.
-
-**Expected result:** The search and severity controls filter the displayed records using the page's filtering logic.
-
-## 8. Part 1 Verification
-
-The following checks can be used to verify the original ingestion and validation requirements alongside the Part 2 work.
-
-| Requirement | Verification |
+| Home | `/` | Live statistics and a sensor readings chart. |
+| Telemetry Overview | `/dashboard` | Device statistics, alerts and an anomaly heat map. |
+| Command Stream | `/command-stream` | Queues, commands, undo, faults, timeline, registry and predictive suggestions. |
+| **Topology** | `/topology` | Mesh map, MST overlay, route tracing, what-if outages, per-sensor history and the performance benchmark. |
+| Anomaly Logs | `/anomalies` | Search and filter scored readings, and acknowledge anomalies. |
+| Data Ingestion | `/ingestion` | Manage devices, upload encrypted files and trigger test telemetry. |
+| Integrations | `/integrations` | Register and test webhooks. |
+| System Health | `/health` | Uptime, database connectivity and incident history. |
+
+### Using the Topology page (Part 3)
+
+1. Open **Topology**. The four cards show reachable sensors, nodes down, MST total cost and the power saved against using every link.
+2. Click any node on the map. The side panel shows its category, location, last value and link count. The route to the gateway is traced, and the MST route is compared with the fewest-hops route.
+3. Toggle **Show MST** to highlight the minimum spanning tree edges.
+4. Turn on **What-if mode**, select a node and choose **Simulate outage**. The map shows which nodes reroute and which become stranded. Use **Reset scenario** to clear it. This never changes devices or the database.
+5. Pick a sensor and a time window in the history panel to run an AVL range query.
+6. Press **Run benchmark** to compare the AVL tree with a linear scan.
+7. Use the **Command Stream** page to disconnect a real node. The topology updates itself within about 2 seconds.
+
+**Reference results for the seeded mesh (13 nodes, 23 links):**
+
+| Scenario | Result |
 |---|---|
-| Generics | Use Swagger to submit float, integer and Boolean telemetry through the appropriate endpoints. |
-| Operator overloading | Use the Data Ingestion power aggregation calculator or the relevant power aggregation API endpoint. |
-| Recursive validation | Validate a deeply nested facility path, then test a path that violates the deployment rules. |
-| Encrypted uploads | Upload a file for a sensor, download it and compare the readable download with the encrypted stored file. |
-| Ring buffer | Generate enough readings to exceed the configured rolling-window capacity and verify that anomaly scoring uses the recent window. |
-| Anomaly detection | Generate normal and abnormal readings and inspect their recorded classifications. |
-| Webhook integration | Configure an endpoint, test connectivity and verify the notification behaviour for critical alerts. |
+| Healthy mesh | MST has 12 edges, total cost **29.6**. |
+| Node 05 down | MST cost **29.3**, 11 edges, 11 nodes reroute. Node 03's route changes from `03 → 05 → GW` (cost 4.4) to `03 → GW` (cost 3.0). |
+| Nodes 03, 05 and 07 down | 9 nodes are stranded as one island with no route to the gateway. |
+| Fewest hops (BFS) | 03, 05 and 07 are 1 hop away. 01, 04, 06 and 08 are 2. 02, 09 and 0A are 3. 0B and 0C are 4. |
+| Farthest MST route | Node 0B to the gateway: 6 hops, cost 14.0. |
 
-For encrypted file verification, inspect the upload directory inside the API container using the actual container name and configured storage path. Avoid publishing encryption keys or sensitive file contents in the demonstration.
+## 7. API Reference
 
-## 9. API Reference
-
-The Swagger interface provides the definitive request and response schemas for the running version of the application.
-
-Open: http://localhost:5000/swagger
-
-The following endpoint groups describe the expected API surface. Confirm individual routes against the current implementation before relying on them in external scripts.
+Swagger is the definitive reference: http://localhost:5000/swagger
 
 | Area | Operations |
 |---|---|
-| Sensors | Retrieve, register, update and delete devices; retrieve summary and registry information. |
-| Files | Upload attachments, list stored files and download decrypted files. |
-| Telemetry | Submit typed readings, disconnect devices, retrieve recent readings and access history. |
-| Command Stream | Inspect queues, command history, timeline and faults; issue and undo commands. |
-| Insights | Retrieve suggestions and insights; submit search activity. |
-| Anomalies | Retrieve filtered anomaly records and acknowledge individual entries. |
-| Integrations | Register, list, test and remove webhook integrations. |
-| System | Retrieve health summaries, incidents and the API health status. |
-| Demonstration utilities | Test power aggregation and deployment path validation. |
+| Sensors | Retrieve, register, update and delete devices; summary and registry. |
+| Files | Upload, list and download decrypted files. |
+| Telemetry | Submit typed readings, disconnect devices, retrieve recent readings. |
+| Command Stream | Queues, command history, timeline and faults; issue and undo commands. |
+| Insights | Predictive suggestions and automated insights. |
+| Anomalies | Filtered anomaly records and acknowledgement. |
+| Integrations | Register, list, test and remove webhooks. |
+| System | Health summaries and incidents. |
+| **Mesh (Part 3)** | Topology, whole-mesh analysis and route tracing, each with an optional what-if. |
+| **History (Part 3)** | Range queries, summaries and the benchmark. |
 
-### Common endpoint examples
+### Part 3 endpoints
 
-| Method | Example route | Purpose |
+| Method | Route | Purpose |
 |---|---|---|
-| GET | `/api/sensors/summary` | Retrieve sensor statistics. |
-| GET | `/api/sensors/registry` | Retrieve the live device registry. |
-| POST | `/api/telemetry/moisture` | Submit a moisture reading. |
-| GET | `/api/commands/queues` | Inspect queue depths. |
-| GET | `/api/commands/history` | Retrieve command history, if exposed by the current API. |
-| GET | `/api/commands/timeline` | Retrieve the historical timeline, if exposed by the current API. |
-| GET | `/api/commands/faults` | Inspect active faults. |
+| GET | `/api/mesh/topology` | Nodes, links and current status. |
+| GET | `/api/mesh/analysis?assumeDown=<mac>&assumeDown=<mac>` | BFS hops, DFS subnets, MST, savings, reroutes and stranded nodes. `assumeDown` is optional and simulated. |
+| GET | `/api/mesh/route/{mac}?assumeDown=` | MST route against fewest-hops route for one node. |
+| GET | `/api/history/{sensorId}?from=&to=&skip=&take=&order=` | AVL range query, ascending or descending, with paging. |
+| GET | `/api/history/{sensorId}/summary` | Count, min, max, mean and time span for one sensor. |
+| GET | `/api/history/benchmark?sizes=1000,10000&queries=` | AVL tree against linear scan at the given sizes. |
+
+### Other common examples
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/api/sensors/summary` | Sensor statistics. |
+| GET | `/api/sensors/registry` | Live device registry. |
+| GET | `/api/commands/queues` | Queue depths. |
 | POST | `/api/commands/issue` | Issue a device command. |
 | POST | `/api/commands/undo` | Undo the most recent command. |
-| GET | `/api/insights` | Retrieve predictive suggestions and automated insights. |
-| GET | `/api/system/health-summary` | Retrieve system health statistics. |
+| GET | `/api/insights` | Suggestions and insights. |
 
-## 10. Real-Time Communication
+## 8. Real-Time Communication
 
-The application uses SignalR to distribute state changes to connected clients.
-
-The hub is configured at:
-
-`/hubs/telemetry`
-
-The client maintains a shared telemetry store so that components can reuse received data and state while navigating between pages.
+The hub is at `/hubs/telemetry`. The client opens **one** shared connection, owned by `TelemetryStore`, and reuses it across pages.
 
 | Event | Purpose |
 |---|---|
-| `AnomalyUpdate` | Updates anomaly-related visualisations. |
+| `AnomalyUpdate` | Updates anomaly visualisations. |
 | `TelemetryIngested` | Announces newly ingested telemetry. |
 | `DeviceRegistryUpdated` | Refreshes live registry information. |
-| `QueueDepthChanged` | Updates processing queue counters. |
-| `FaultSetChanged` | Updates active fault information and navigation indicators. |
-| `InsightsUpdated` | Refreshes suggestions and automated insights. |
-| `CommandIssued` | Announces a newly issued command. |
-| `CommandUndone` | Announces a command undo operation. |
+| `QueueDepthChanged` | Updates queue counters. |
+| `FaultSetChanged` | Updates active faults. |
+| `InsightsUpdated` | Refreshes suggestions and insights. |
+| `CommandIssued` / `CommandUndone` | Announce command activity. |
+| `ItemProcessed` | A queued item has been processed. |
+| **`MeshHealthChanged`** | The mesh's set of failed nodes changed, so the Topology page re-analyses. |
 
-Event names and payloads should be confirmed against the current hub and client subscription implementations.
+## 9. Data Structures and Implementation
 
-## 11. Data Structures and Implementation
-
-| Concept | Data structure or component | Responsibility |
+| Concept | Structure or component | Responsibility |
 |---|---|---|
 | Standard processing | `Queue<T>` | FIFO processing for standard telemetry. |
-| Priority processing | `PriorityQueue<TElement, TPriority>` | Processes higher-priority events before standard queue items. |
-| Command undo | `Stack<T>` | Maintains last-in, first-out command history. |
-| Device registry | `ConcurrentDictionary<TKey, TValue>` | Supports efficient, thread-safe device lookup and updates. |
-| Historical timeline | `SortedDictionary<TKey, TValue>` | Maintains timestamp-ordered telemetry buckets. |
-| Active faults | `HashSet<T>` | Prevents duplicate fault entries. |
-| Predictive learning | Dictionaries and collections | Records alert-action associations and ranks qualifying suggestions. |
-| Rolling anomaly window | `RingBuffer<T>` | Retains a bounded set of recent readings for statistical scoring. |
-| Telemetry batches | Jagged arrays and `List<T>` | Stores and processes grouped telemetry. |
-| Typed telemetry | `TelemetryPacket<T>` | Supports multiple telemetry value types through a generic model. |
-| Power arithmetic | `PowerReading` | Implements overloaded arithmetic and comparison operators. |
-| Client state | `TelemetryStore` | Shares live data, connection state and selected interface preferences. |
+| Priority processing | `PriorityQueue<T, (Rank, Sequence)>` | Priority events first, in arrival order within a rank. |
+| Command undo | `Stack<T>` | LIFO history with actuator-state snapshots. |
+| Device registry | `ConcurrentDictionary` | Thread-safe lookup by MAC address. |
+| Historical timeline | `SortedDictionary` | Timestamp-ordered buckets. |
+| Active faults | `HashSet<T>` | No duplicate fault entries. |
+| Rolling anomaly window | `RingBuffer<T>` | Bounded window for z-score scoring. |
+| **Historical queries** | **`AvlTree<TKey,TValue>`** | **Self-balancing tree, one per sensor, keyed by timestamp.** |
+| **Priority for Prim** | **`MinHeap<T>`** | **Array-backed binary heap with a custom comparer.** |
+| **Mesh network** | **`MeshGraph`** | **Undirected weighted adjacency list.** |
+| **Routing algorithms** | **`MeshAlgorithms`** | **BFS, DFS, Prim, route tracing and reroute analysis.** |
 
 ### Predictive Action Engine
 
-The engine learns associations between alerts and operator actions.
+1. Alerts are recorded in a rolling window.
+2. Operator commands and searches are associated with the alerts active at the time.
+3. Each observation is weighted by **recency decay** (half-life 4 hours).
+4. A **repeat-offender** insight fires when a device alarms 3 or more times in 60 minutes, and escalates at 6.
+5. A **trend forecast** (linear regression, at least 6 points and R² ≥ 0.6) projects the reading 30 minutes ahead.
+6. A suggestion is shown only when its pattern has at least 2 observations.
 
-1. Relevant alerts are recorded within a rolling time window.
-2. Operator commands and committed searches are associated with the alerts active at the time.
-3. Repeated associations contribute to the learned pattern history.
-4. Candidate actions are ranked according to their observed confidence.
-5. Suggestions meeting the configured minimum observation threshold are presented to the operator.
+This is an explainable, rule-driven engine, not a trained machine-learning model. Learned patterns are held in memory and are not persisted to PostgreSQL.
 
-Automated Insights are separate rule-based evaluations of system conditions, such as disconnected devices, abnormal readings and processing backlogs.
+## 10. Part 3 Implementation Report
 
-These capabilities are intended to demonstrate an explainable, rule-driven predictive workflow rather than a trained machine-learning model.
+Source files are under `SmartX.Api/Domain/Collections/` and `SmartX.Api/Services/`.
 
-## 12. Project Structure
+### 10.1 AVL tree — `AvlTree.cs`
+
+**Why it exists.** Every sensor has about 8,064 historical readings, and operators ask "what happened between 14:00 and 15:00?". A scan checks every reading. A plain binary search tree would be fast, but timestamps arrive in increasing order, and inserting sorted keys into an unbalanced BST produces a linked list with height n. An AVL tree rotates after every insert so its height stays about log₂ n.
+
+**Rebalancing:**
+
+```csharp
+private static Node Rebalance(Node node)
+{
+    UpdateHeight(node);
+    var balance = HeightOf(node.Left) - HeightOf(node.Right);
+
+    if (balance > 1) // left-heavy
+    {
+        if (HeightOf(node.Left!.Left) < HeightOf(node.Left.Right))
+            node.Left = RotateLeft(node.Left);   // left-right case
+        return RotateRight(node);
+    }
+    if (balance < -1) // right-heavy
+    {
+        if (HeightOf(node.Right!.Right) < HeightOf(node.Right.Left))
+            node.Right = RotateRight(node.Right); // right-left case
+        return RotateLeft(node);
+    }
+    return node;
+}
+```
+
+**Range query.** `Range(from, to)` walks down once to find the first key ≥ `from`, pushing each node onto a stack. It then yields entries in order until a key exceeds `to`. It uses an explicit `Stack<Node>` instead of recursion, so no call-stack depth limit applies and iteration is lazy (`yield return`), which suits paging with `skip` and `take`:
+
+```csharp
+var pending = new Stack<Node>();
+for (var n = _root; n is not null;)
+{
+    if (n.Key.CompareTo(from) >= 0) { pending.Push(n); n = n.Left; }
+    else n = n.Right;
+}
+while (pending.Count > 0)
+{
+    var node = pending.Pop();
+    if (node.Key.CompareTo(to) > 0) yield break;   // everything after is later still
+    yield return new(node.Key, node.Value);
+    for (var c = node.Right; c is not null; c = c.Left) pending.Push(c);
+}
+```
+
+**Other design choices**
+
+- Equal keys go right, so two readings with the same timestamp stay in insertion order.
+- `RangeDescending` is the mirror image, used for "newest first" pages.
+- `TryRemoveMin` lets a history cap drop the oldest reading in O(log n).
+- `IsValid(out problem)` checks the real height of every node, the balance factor, the stored heights and the ordering of the whole in-order sequence. The tests call it after thousands of inserts.
+- `MinimumPossibleHeight` (⌈log₂(n+1)⌉) is the theoretical floor, and the benchmark shows it next to the real height.
+
+| Operation | Time |
+|---|---|
+| Insert | O(log n) |
+| Min / max | O(log n) |
+| Remove min | O(log n) |
+| Range query returning k results | O(log n + k) |
+| Full in-order traversal | O(n) |
+| Space | O(n) |
+
+### 10.2 Min-heap — `MinHeap.cs`
+
+A binary heap in a growable array (children of `i` at `2i+1` and `2i+2`), with a pluggable `IComparer<T>`. Sifting is **hole-based**: instead of swapping at each level, parents or children are shifted into the hole and the moving item is written once at the end.
+
+```csharp
+private void SiftUp(int index)
+{
+    var item = _items[index];
+    while (index > 0)
+    {
+        var parent = (index - 1) / 2;
+        if (_comparer.Compare(item, _items[parent]) >= 0) break;
+        _items[index] = _items[parent];   // shift the parent down into the hole
+        index = parent;
+    }
+    _items[index] = item;                 // single write
+}
+```
+
+| Operation | Time |
+|---|---|
+| Push | O(log n) |
+| Pop | O(log n) |
+| Peek | O(1) |
+| Growth | Doubles capacity, amortised O(1) |
+
+### 10.3 Mesh graph — `MeshGraph.cs`
+
+An undirected weighted graph stored as an **adjacency list** (`Dictionary<string, List<MeshNeighbor>>`), with case-insensitive ids. It rejects bad input when the graph is built: duplicate nodes, a second gateway, self-links, non-positive or NaN costs and duplicate links. The mesh is sparse (13 nodes, 23 links), so an adjacency list uses O(V + E) space instead of O(V²) for a matrix and iterates a node's neighbours directly.
+
+### 10.4 Graph algorithms — `MeshAlgorithms.cs`
+
+All algorithms take an `isDown` predicate so the same code serves the live mesh and what-if scenarios. The gateway is never treated as down.
+
+**Breadth-first search, O(V + E).** It finds the fewest-hops distance from the gateway and keeps a parent pointer for each node, which `TraceRoute` follows back to build a path. Fewest hops means fewest radio transmissions, which suits latency.
+
+**Depth-first search, O(V + E).** `FindSubnets` uses an explicit `Stack<string>`, not recursion. It groups the surviving nodes into connected components. A group that does not contain the gateway is an island, and every node in it is stranded.
+
+**Prim's algorithm, O(E log V).** It grows a minimum spanning tree from the gateway. A `MinHeap<Frontier>` holds candidate edges ordered by cost. Instead of a decrease-key operation, the algorithm uses **lazy deletion**: stale heap entries are skipped when popped because their destination is already in the tree. Ties are broken by node ids so the same graph always yields the same tree.
+
+```csharp
+heap.Push(new Frontier(link.Cost, current, neighbour));
+// ...
+while (heap.TryPop(out var edge))
+{
+    if (reached.Contains(edge.To)) continue;   // lazy deletion
+    reached.Add(edge.To);
+    parent[edge.To] = edge.From;
+    edges.Add(new MeshEdge(edge.From, edge.To, edge.Cost));
+    total += edge.Cost;
+    // push this node's links to nodes not yet reached
+}
+```
+
+**Reroute analysis, O(V + E).** `RouteChanges` compares the healthy tree's parents with the current ones and reports each node's old path, new path, next hop, cost change and whether it is now stranded.
+
+| Algorithm | Time | Space |
+|---|---|---|
+| BFS | O(V + E) | O(V) |
+| DFS subnets | O(V + E) | O(V) |
+| Prim (binary heap) | O(E log V) | O(V + E) |
+| Route trace | O(path length) | O(path length) |
+
+### 10.5 Services
+
+| Service | Role |
+|---|---|
+| `MeshService` | Builds the live snapshot. A node is down when the fault tracker or registry says so. |
+| `MeshAnalysisService` | `Analyze(assumeDown)` returns reachable, stranded, subnets, MST, savings and reroutes. `Route(id, assumeDown)` compares the MST route with the fewest-hops route. |
+| `MeshHealthMonitor` | Checks every 2 seconds. It pushes `MeshHealthChanged` only when the set of failed nodes changes. |
+| `TelemetryHistoryService` | One `AvlTree<DateTime, Reading>` per sensor, guarded by a lock. Supports query and summarise, with a cap of 100,000 points per sensor. |
+| `HistoryBenchmark` | Times the AVL tree against a linear scan and reports tree heights. |
+
+## 11. Performance and Scaling
+
+The benchmark runs inside the API on identical data and identical time windows, and it checks that both methods return the same result.
+
+```
+GET http://localhost:5000/api/history/benchmark?sizes=1000,10000,50000
+```
+
+### Why the trees behave this way
+
+| Readings (n) | Linear scan visits | AVL height (at most about 1.44 log₂ n) | Minimum possible |
+|---|---|---|---|
+| 1,000 | 1,000 | ≈ 10–12 | 10 |
+| 10,000 | 10,000 | ≈ 14–16 | 14 |
+| 100,000 | 100,000 | ≈ 17–20 | 17 |
+
+A plain BST receiving time-ordered inserts has height **n** (it degenerates to a list). The benchmark reports this height for sizes up to 5,000 so you can see the contrast.
+
+### Example measured results
+
+> **Replace this table with your own run.** Click *Run benchmark* on the Topology page and copy the numbers.
+
+| Readings | Speed-up (linear ÷ AVL) | Same result |
+|---|---|---|
+| 1,000 | about 3.9× | ✔ |
+| 10,000 | about 4.1× | ✔ |
+
+### Reading the numbers
+
+- A linear scan is O(n). An AVL range query is O(log n + k), where k is the number of results.
+- For a fixed window size, **the gap widens as n grows**, because the scan's cost grows with n while the tree's grows with log n and k.
+- With very wide windows (k close to n) both methods have to touch most of the data, so the speed-up shrinks. The tree wins most clearly on narrow windows, which are the common operator query.
+- The measured speed-up at these sizes is modest because 10,000 points is small. The logarithmic advantage grows with the dataset.
+- Memory is O(n) for both. The tree adds two child references and a height field per entry.
+
+### Mesh scaling
+
+The mesh analysis is cheap to run: BFS and DFS are O(V + E) and Prim is O(E log V). With 13 nodes and 23 links it is effectively instant, which is why the monitor can re-run it every 2 seconds on a change. Because the graph is stored as an adjacency list, adding sensors increases cost in proportion to V + E, not V².
+
+## 12. Troubleshooting
+
+| Problem | Likely cause | Fix |
+|---|---|---|
+| Topology says "Loading the mesh…" for a while after first start | History warm-up takes about 12–14 s. | Wait, then refresh. |
+| API cannot connect to the database | Postgres is not healthy yet. | Wait for the health check, or `docker compose down -v && docker compose up --build`. |
+| Page not found on refresh (e.g. `/topology`) | nginx SPA fallback not applied. | Rebuild the client container. |
+| Migration or column errors after pulling new changes | Old database volume. | `docker compose down -v`, then `up --build`. |
+| Docker error "cannot connect to the Docker daemon" or a named-pipe error | Docker Desktop is not running. | Start it and retry. |
+| `MSB3277` EF Core version-conflict warnings | Transitive package versions differ (10.0.4 and 10.0.12). | Harmless; the build succeeds. |
+| A new service fails with "unable to resolve" | It is not registered in `Program.cs`. | Register it in `Program.cs`. Order matters for hosted services (see the comments there). |
+| Spike does not raise a Critical alert | The rolling baseline adapted. | Try another device or allow it to recover. |
+| `ci-local.ps1` is blocked | PowerShell execution policy. | `Set-ExecutionPolicy -Scope Process Bypass`, then re-run. |
+
+## 13. Project Structure
 
 ```text
-SmartX/
+PROG7312---POE/
+├── .github/
+│   ├── workflows/ci.yml
+│   └── dependabot.yml
+├── scripts/ci-local.ps1
 ├── docker-compose.yml
 ├── README.md
+├── FEEDBACK_UPDATES.md
+├── SmartX.slnx
 ├── SmartX.Api/
 │   ├── Program.cs
 │   ├── Domain/
-│   │   ├── Collections/
+│   │   ├── Collections/     AvlTree, MinHeap, MeshGraph, MeshAlgorithms, RingBuffer
 │   │   ├── Entities/
-│   │   ├── Models/
+│   │   ├── Models/          MeshAnalysisModels and others
 │   │   └── ValueObjects/
-│   ├── Infrastructure/
-│   │   ├── Data/
-│   │   ├── FileStorage/
-│   │   └── Seeding/
-│   ├── Services/
-│   ├── Endpoints/
+│   ├── Infrastructure/      Data, FileStorage, Seeding
+│   ├── Services/            MeshService, MeshAnalysisService, MeshHealthMonitor,
+│   │                        TelemetryHistoryService, HistoryBenchmark,
+│   │                        CommandStreamService, PredictiveActionEngine, ...
+│   ├── Endpoints/           MeshEndpoints, HistoryEndpoints, ...
 │   ├── Hubs/
 │   ├── Middleware/
-│   ├── Dtos/
 │   ├── Migrations/
 │   └── Dockerfile
-└── SmartX.Client/
-    ├── Pages/
-    ├── Components/
-    ├── Layout/
+├── SmartX.Client/
+│   ├── Pages/               Topology.razor and others
+│   ├── Components/          MeshMap, RouteView, TelemetryHistoryPanel, BenchmarkCard
+│   ├── Services/            TelemetryStore (+ Topology partial)
+│   ├── wwwroot/css/
+│   ├── nginx.conf
+│   └── Dockerfile
+└── SmartX.Tests/
+    ├── Collections/
+    ├── Mesh/
     ├── Services/
-    ├── Models/
-    ├── wwwroot/
-    │   └── css/
-    ├── nginx.conf
-    └── Dockerfile
+    └── Support/
 ```
-
-The tree represents the main architectural areas. Some folder names may differ from the exact repository layout.
-
----
 
 **Smart-X | PROG7312 — Programming 3B**
 
-Student: Perez Seth Roy   
+Student: Perez Seth Roy  
 Student Number: ST10448618
